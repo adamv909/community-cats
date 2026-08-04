@@ -342,10 +342,20 @@ export default function StationChecklistPage() {
                 onChange={e => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = ev => setNewCatPhoto(ev.target?.result as string)
-                  reader.readAsDataURL(file)
                   e.target.value = ''
+                  const img = new Image()
+                  const url = URL.createObjectURL(file)
+                  img.onload = () => {
+                    URL.revokeObjectURL(url)
+                    const MAX = 800
+                    const scale = Math.min(1, MAX / Math.max(img.width, img.height))
+                    const canvas = document.createElement('canvas')
+                    canvas.width = Math.round(img.width * scale)
+                    canvas.height = Math.round(img.height * scale)
+                    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+                    setNewCatPhoto(canvas.toDataURL('image/jpeg', 0.75))
+                  }
+                  img.src = url
                 }}
               />
             </div>

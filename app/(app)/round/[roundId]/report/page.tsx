@@ -108,10 +108,13 @@ export default function ReportPage() {
     try {
       if (navigator.share) {
         const shareData: ShareData = { text: reportText, title: 'Cat Feeding Report' }
-        if (photoFiles.length > 0 && navigator.canShare?.({ files: photoFiles })) {
-          shareData.files = photoFiles
+        if (photoFiles.length > 0) shareData.files = photoFiles
+        try {
+          await navigator.share(shareData)
+        } catch {
+          // Files not supported — retry without them
+          await navigator.share({ text: reportText, title: 'Cat Feeding Report' })
         }
-        await navigator.share(shareData)
       } else {
         await navigator.clipboard.writeText(reportText)
       }
