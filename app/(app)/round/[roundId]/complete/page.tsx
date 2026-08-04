@@ -3,12 +3,16 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
+import { syncCompletedRound } from '@/lib/supabase/services/sync'
+
+type SyncState = 'idle' | 'syncing' | 'done' | 'error'
 
 export default function RoundCompletePage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
   const { activeRound, completeRound } = useFeedingRoundStore()
   const [notes, setNotes] = useState(activeRound?.notes ?? '')
+  const [syncState, setSyncState] = useState<SyncState>('idle')
 
   if (!activeRound || activeRound.id !== roundId) {
     router.replace('/home')
@@ -23,8 +27,18 @@ export default function RoundCompletePage() {
   const allFood = stationStates.every(s => s.foodToppedUp)
   const allWater = stationStates.every(s => s.waterToppedUp)
 
-  function handleFinish() {
+  async function handleFinish() {
+    const completedAt = new Date().toISOString()
+    const completedRound = { ...activeRound!, completedAt, notes: notes || activeRound!.notes }
     completeRound(notes)
+    setSyncState('syncing')
+    try {
+      await syncCompletedRound(completedRound)
+      setSyncState('done')
+    } catch (err) {
+      console.error('Sync failed:', err)
+      setSyncState('error')
+    }
     router.push(`/round/${roundId}/report`)
   }
 
@@ -78,10 +92,16 @@ export default function RoundCompletePage() {
 
       <button
         onClick={handleFinish}
-        className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
+        disabled={syncState === 'syncing'}
+        className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform disabled:opacity-70"
       >
-        Generate report →
+        {syncState === 'syncing' ? 'Saving…' : 'Generate report →'}
       </button>
+      {syncState === 'error' && (
+        <p className="text-xs text-center text-amber-600 dark:text-amber-400 mt-2">
+          Could not sync to server — your report is still available.
+        </p>
+      )}
     </div>
   )
 }
