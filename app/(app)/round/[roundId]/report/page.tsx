@@ -83,17 +83,6 @@ export default function ReportPage() {
     })
     .filter((p): p is NewCatPhoto => p !== null)
 
-  const shareFiles = useMemo(
-    () => newCatPhotos.map((p, i) => dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`)),
-    [newCatPhotos]
-  )
-
-  // Safe to touch `navigator` unguarded here: shareFiles is only non-empty once photos have
-  // loaded from IndexedDB (an effect-driven, client-only state update), so this branch can
-  // never run during server rendering or the first client render.
-  const canCombinedShare = shareFiles.length > 0 && !!navigator.share &&
-    (!navigator.canShare || navigator.canShare({ text: reportText, files: shareFiles, title: 'Cat Feeding Report' }))
-
   useEffect(() => {
     if (!activeRound || !routes) return
     if (allSeenCatIds.length > 0 && !seenCats) return
@@ -189,13 +178,14 @@ export default function ReportPage() {
 
   async function handleSharePhotos() {
     setPhotoShareError(false)
-    const canUseWebShare = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: shareFiles }))
+    const files = newCatPhotos.map((p, i) => dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`))
+    const canUseWebShare = !!navigator.share && (!navigator.canShare || navigator.canShare({ files }))
 
     if (!canUseWebShare) {
       // No Web Share API (or it can't take files) — fall back to individual downloads
       // rather than silently claiming success.
       try {
-        for (const file of shareFiles) {
+        for (const file of files) {
           const url = URL.createObjectURL(file)
           const a = document.createElement('a')
           a.href = url
@@ -212,28 +202,11 @@ export default function ReportPage() {
     }
 
     try {
-      await navigator.share({ files: shareFiles, title: 'New cats seen today' })
+      await navigator.share({ files, title: 'New cats seen today' })
       setPhotoShared(true)
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       console.error('Photo share failed:', err)
-      setPhotoShareError(true)
-    }
-  }
-
-  // Attempts a single share carrying both the report text and the photos — feature-detected
-  // via canCombinedShare, computed from the platform's own canShare() check. Falls back to
-  // the two separate share buttons (handleShare / handleSharePhotos above) on any device that
-  // doesn't support combining them, so this is purely additive.
-  async function handleShareReportAndPhotos() {
-    setPhotoShareError(false)
-    try {
-      await navigator.share({ text: reportText, files: shareFiles, title: 'Cat Feeding Report' })
-      setShared(true)
-      setPhotoShared(true)
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return
-      console.error('Combined share failed:', err)
       setPhotoShareError(true)
     }
   }
@@ -322,43 +295,25 @@ export default function ReportPage() {
               </div>
             ))}
           </div>
-          {!canCombinedShare && (
-            <>
-              <button
-                onClick={handleSharePhotos}
-                className="w-full h-12 rounded-2xl border border-border text-foreground font-medium text-sm active:scale-[0.98] transition-transform"
-              >
-                {photoShared ? '✓ Photos shared' : `📷 Share ${newCatPhotos.length} photo${newCatPhotos.length !== 1 ? 's' : ''}`}
-              </button>
-              {photoShareError && (
-                <p className="text-xs text-destructive mt-1.5">Couldn&apos;t share photos — try again.</p>
-              )}
-            </>
+          <button
+            onClick={handleSharePhotos}
+            className="w-full h-12 rounded-2xl border border-border text-foreground font-medium text-sm active:scale-[0.98] transition-transform"
+          >
+            {photoShared ? '✓ Photos shared' : `📷 Share ${newCatPhotos.length} photo${newCatPhotos.length !== 1 ? 's' : ''}`}
+          </button>
+          {photoShareError && (
+            <p className="text-xs text-destructive mt-1.5">Couldn&apos;t share photos — try again.</p>
           )}
         </div>
       )}
 
       <div className="mt-4 space-y-3">
-        {canCombinedShare ? (
-          <>
-            <button
-              onClick={handleShareReportAndPhotos}
-              className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
-            >
-              {shared && photoShared ? '✓ Shared' : `📤 Share report + ${newCatPhotos.length} photo${newCatPhotos.length !== 1 ? 's' : ''}`}
-            </button>
-            {photoShareError && (
-              <p className="text-xs text-destructive text-center -mt-2">Couldn&apos;t share — try again.</p>
-            )}
-          </>
-        ) : (
-          <button
-            onClick={handleShare}
-            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
-          >
-            {shared ? '✓ Copied / shared' : '📤 Share report'}
-          </button>
-        )}
+        <button
+          onClick={handleShare}
+          className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
+        >
+          {shared ? '✓ Copied / shared' : '📤 Share report'}
+        </button>
         <button
           onClick={handleDone}
           className="w-full h-12 rounded-2xl border border-border text-muted-foreground font-medium text-sm active:scale-[0.98] transition-transform"
