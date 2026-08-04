@@ -109,10 +109,15 @@ export default function RouteOverviewPage() {
 
   const [isEditing, setIsEditing] = useState(false)
   const [draftOrder, setDraftOrder] = useState<string[] | null>(null)
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false)
 
   const route = routes?.find(r => r.id === id)
   const isThisRouteActive = activeRound?.routeId === id && !activeRound.completedAt
   const hasDifferentActiveRound = activeRound && !activeRound.completedAt && activeRound.routeId !== id
+  const otherActiveRoute = hasDifferentActiveRound ? routes?.find(r => r.id === activeRound!.routeId) : undefined
+  const activeRoundStationsDone = activeRound
+    ? Object.values(activeRound.stationStates).filter(s => s.completedAt).length
+    : 0
 
   const savedOrder = routeStationOrder[id] ?? null
 
@@ -145,6 +150,15 @@ export default function RouteOverviewPage() {
 
   function handleStartRound() {
     if (!user) return
+    // Starting a round wipes any other in-progress round (different route, or "Start over"
+    // on this one) — every station check, cat sighting, and welfare note in it is lost with
+    // no undo. Require an explicit confirmation tap rather than a passive warning label.
+    const isDestructive = hasDifferentActiveRound || isThisRouteActive
+    if (isDestructive && !confirmOverwrite) {
+      setConfirmOverwrite(true)
+      return
+    }
+    setConfirmOverwrite(false)
     const roundId = startRound(route!.id, user.id)
     const firstStation = orderedStations[0]?.station
     if (firstStation) {
@@ -231,7 +245,34 @@ export default function RouteOverviewPage() {
       {/* Start / continue button */}
       {!isEditing && (
         <div className="p-4">
-          {isThisRouteActive ? (
+          {confirmOverwrite ? (
+            <div className="space-y-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                {hasDifferentActiveRound
+                  ? `Discard your in-progress round on ${otherActiveRoute?.name ?? 'another route'}?`
+                  : 'Discard your progress on this round?'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {activeRoundStationsDone > 0
+                  ? `${activeRoundStationsDone} station${activeRoundStationsDone !== 1 ? 's' : ''} already checked off — all sightings, food levels, and notes will be lost. This can't be undone.`
+                  : "All sightings, food levels, and notes so far will be lost. This can't be undone."}
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setConfirmOverwrite(false)}
+                  className="flex-1 h-11 rounded-xl border border-border text-muted-foreground font-medium text-sm active:scale-[0.98] transition-transform"
+                >
+                  Keep it
+                </button>
+                <button
+                  onClick={handleStartRound}
+                  className="flex-1 h-11 rounded-xl bg-amber-500 text-white font-semibold text-sm active:scale-[0.98] transition-transform"
+                >
+                  Discard &amp; start
+                </button>
+              </div>
+            </div>
+          ) : isThisRouteActive ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm mb-2">
                 <span className="text-muted-foreground">Progress</span>
@@ -254,7 +295,7 @@ export default function RouteOverviewPage() {
             <div className="space-y-2">
               {hasDifferentActiveRound && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 text-center pb-1">
-                  Starting this round will cancel the round in progress.
+                  You have a round in progress on {otherActiveRoute?.name ?? 'another route'}.
                 </p>
               )}
               <button

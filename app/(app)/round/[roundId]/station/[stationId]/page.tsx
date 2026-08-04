@@ -1,11 +1,13 @@
 'use client'
 
-import { useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
+import { fetchActiveRoutes, type RouteStation } from '@/lib/supabase/services/routes'
 import { fetchCatsByStation, fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
+import { usePreferencesStore } from '@/store/preferences-store'
+import { savePhoto, getPhotos, deletePhoto } from '@/lib/db/photo-store'
 import { CatCard } from '@/components/feeding/CatCard'
 import { WelfareConcernModal } from '@/components/feeding/WelfareConcernModal'
 import { GuestCatModal } from '@/components/feeding/GuestCatModal'
@@ -14,10 +16,12 @@ export default function StationChecklistPage() {
   const { roundId, stationId } = useParams() as { roundId: string; stationId: string }
   const router = useRouter()
   const [welfareCatId, setWelfareCatId] = useState<string | null>(null)
+  const [welfareAdditionalCatIndex, setWelfareAdditionalCatIndex] = useState<number | null>(null)
   const [showAddCat, setShowAddCat] = useState(false)
   const [showGuestModal, setShowGuestModal] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatPhoto, setNewCatPhoto] = useState<string | undefined>(undefined)
+  const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
   const addCatInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
@@ -28,20 +32,25 @@ export default function StationChecklistPage() {
   })
 
   const {
-    activeRound, openStation, toggleCatSeen,
+    activeRound, hasHydrated, openStation, toggleCatSeen,
     setFoodToppedUp, setFoodLevel, setWaterToppedUp, setStationNotes,
-    addAdditionalCat, removeAdditionalCat,
+    addAdditionalCat, removeAdditionalCat, setAdditionalCatWelfare,
     addGuestCat, removeGuestCat,
     setWelfareConcern, completeStation,
   } = useFeedingRoundStore()
+  const { getStationOrder } = usePreferencesStore()
 
-  // Ensure station is open in the store
-  if (activeRound && !activeRound.stationStates[stationId]) {
-    openStation(stationId)
-  }
+  // Ensure station is open in the store — done as an effect, not during render,
+  // to avoid calling a state setter mid-render (React rule violation).
+  useEffect(() => {
+    if (activeRound && !activeRound.stationStates[stationId]) {
+      openStation(stationId)
+    }
+  }, [activeRound, stationId, openStation])
 
   const stationState = activeRound?.stationStates[stationId]
   const guestCatIds = stationState?.guestCatIds ?? []
+  const additionalCats = useMemo(() => stationState?.additionalCats ?? [], [stationState])
 
   const { data: guestCats = [] } = useQuery({
     queryKey: ['guest-cats', guestCatIds],
@@ -49,17 +58,47 @@ export default function StationChecklistPage() {
     enabled: guestCatIds.length > 0,
   })
 
+  // Resolve additionalCats' photoKeys (IndexedDB) to displayable data URLs
+  const photoKeys = useMemo(
+    () => additionalCats.map(c => c.photoKey).filter((k): k is string => !!k),
+    [additionalCats]
+  )
+  useEffect(() => {
+    // Nothing to fetch — downstream lookups are keyed off the current additionalCats list,
+    // so a stale/unset photoMap for an empty key set is harmless.
+    if (photoKeys.length === 0) return
+    let cancelled = false
+    getPhotos(photoKeys).then(map => { if (!cancelled) setPhotoMap(map) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoKeys.join(',')])
+
   // Find station info and route context
   const route = routes?.find(r => r.id === activeRound?.routeId)
   const foodLabel = route?.round_type === 'morning' ? 'Dry food' : 'Wet food'
-  const routeStations = route?.route_stations ?? []
-  const currentIndex = routeStations.findIndex(rs => rs.station.id === stationId)
-  const stationInfo = routeStations[currentIndex]?.station
-  const nextStation = routeStations[currentIndex + 1]?.station
-  const isLastStation = currentIndex === routeStations.length - 1
+
+  // Respect the volunteer's saved station order (route/[id] "Edit order"), not raw DB order
+  const savedOrder = route ? getStationOrder(route.id) : null
+  const orderedRouteStations = useMemo(() => {
+    if (!route) return []
+    if (!savedOrder) return route.route_stations
+    const map = new Map(route.route_stations.map(rs => [rs.station.id, rs]))
+    const ordered = savedOrder.map(sid => map.get(sid)).filter(Boolean) as RouteStation[]
+    const inOrder = new Set(savedOrder)
+    route.route_stations.forEach(rs => { if (!inOrder.has(rs.station.id)) ordered.push(rs) })
+    return ordered
+  }, [route, savedOrder])
+
+  const currentIndex = orderedRouteStations.findIndex(rs => rs.station.id === stationId)
+  const stationInfo = orderedRouteStations[currentIndex]?.station
+  const nextStation = orderedRouteStations[currentIndex + 1]?.station
+  const isLastStation = currentIndex === orderedRouteStations.length - 1
 
   const expectedCatIds = (cats ?? []).map(c => c.id)
-  const welfareCat = welfareCatId ? cats?.find(c => c.id === welfareCatId) : null
+  const welfareCat = welfareCatId
+    ? (cats?.find(c => c.id === welfareCatId) ?? guestCats.find(c => c.id === welfareCatId) ?? null)
+    : null
+  const welfareAdditionalCat = welfareAdditionalCatIndex !== null ? additionalCats[welfareAdditionalCatIndex] : null
 
   function handleCompleteStation() {
     completeStation(stationId)
@@ -77,6 +116,34 @@ export default function StationChecklistPage() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  async function handleAddCat() {
+    const name = newCatName.trim()
+    if (!name) { setShowAddCat(false); return }
+    const photoKey = newCatPhoto ? await savePhoto(newCatPhoto) : undefined
+    addAdditionalCat(stationId, { name, photoKey })
+    setNewCatName('')
+    setNewCatPhoto(undefined)
+    setShowAddCat(false)
+  }
+
+  async function handleRemoveAdditionalCat(index: number) {
+    const cat = additionalCats[index]
+    if (cat?.photoKey) await deletePhoto(cat.photoKey)
+    removeAdditionalCat(stationId, index)
+  }
+
+  // Zustand's persist rehydrates localStorage asynchronously — on a cold load (PWA relaunch,
+  // hard refresh) activeRound is briefly null even though the round is on disk, so wait for
+  // hydration before showing "no round found" (which would otherwise flash incorrectly on
+  // every refresh).
+  if (!hasHydrated) {
+    return (
+      <div className="p-4 text-center pt-20">
+        <p className="text-muted-foreground text-sm">Loading…</p>
+      </div>
+    )
+  }
+
   if (!activeRound) {
     return (
       <div className="p-4 text-center pt-20">
@@ -86,7 +153,15 @@ export default function StationChecklistPage() {
     )
   }
 
-  const totalSeen = stationState ? stationState.seenCatIds.length + (stationState.additionalCats ?? []).length : 0
+  if (!stationState) {
+    return (
+      <div className="p-4 text-center pt-20">
+        <p className="text-muted-foreground text-sm">Loading station…</p>
+      </div>
+    )
+  }
+
+  const totalSeen = stationState.seenCatIds.length + additionalCats.length
 
   return (
     <div className="max-w-lg mx-auto pb-8">
@@ -95,7 +170,7 @@ export default function StationChecklistPage() {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-muted-foreground font-medium">
-              {stationInfo?.area} · Station {currentIndex + 1} of {routeStations.length}
+              {stationInfo?.area} · Station {currentIndex + 1} of {orderedRouteStations.length}
             </p>
             <h1 className="font-semibold text-base leading-tight mt-0.5 truncate">
               {stationInfo?.name ?? 'Loading…'}
@@ -124,7 +199,7 @@ export default function StationChecklistPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">🍽️ Dry food on arrival</p>
                 <div className="grid grid-cols-3 gap-2">
                   {(['empty', 'medium', 'full'] as const).map(level => {
-                    const selected = stationState?.foodLevel === level
+                    const selected = stationState.foodLevel === level
                     const colour = level === 'empty'
                       ? 'border-red-400 bg-red-500/10 text-red-600 dark:text-red-400'
                       : level === 'medium'
@@ -133,7 +208,7 @@ export default function StationChecklistPage() {
                     return (
                       <button
                         key={level}
-                        onClick={() => stationState && setFoodLevel(stationId, selected ? null : level)}
+                        onClick={() => setFoodLevel(stationId, selected ? null : level)}
                         className={`h-12 rounded-xl border-2 font-semibold text-sm capitalize transition-all active:scale-95 ${
                           selected ? colour : 'border-border bg-card text-muted-foreground'
                         }`}
@@ -149,26 +224,26 @@ export default function StationChecklistPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => stationState && setFoodToppedUp(stationId, !stationState.foodToppedUp)}
+                    onClick={() => setFoodToppedUp(stationId, !stationState.foodToppedUp)}
                     className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                      stationState?.foodToppedUp
+                      stationState.foodToppedUp
                         ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         : 'border-border bg-card text-muted-foreground'
                     }`}
                   >
                     <span className="text-xl">🍽️</span>
-                    <span>Dry food {stationState?.foodToppedUp ? '✓' : ''}</span>
+                    <span>Dry food {stationState.foodToppedUp ? '✓' : ''}</span>
                   </button>
                   <button
-                    onClick={() => stationState && setWaterToppedUp(stationId, !stationState.waterToppedUp)}
+                    onClick={() => setWaterToppedUp(stationId, !stationState.waterToppedUp)}
                     className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                      stationState?.waterToppedUp
+                      stationState.waterToppedUp
                         ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         : 'border-border bg-card text-muted-foreground'
                     }`}
                   >
                     <span className="text-xl">💧</span>
-                    <span>Water {stationState?.waterToppedUp ? '✓' : ''}</span>
+                    <span>Water {stationState.waterToppedUp ? '✓' : ''}</span>
                   </button>
                 </div>
               </div>
@@ -177,26 +252,26 @@ export default function StationChecklistPage() {
             <>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
               <button
-                onClick={() => stationState && setFoodToppedUp(stationId, !stationState.foodToppedUp)}
+                onClick={() => setFoodToppedUp(stationId, !stationState.foodToppedUp)}
                 className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                  stationState?.foodToppedUp
+                  stationState.foodToppedUp
                     ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'border-border bg-card text-muted-foreground'
                 }`}
               >
                 <span className="text-xl">🍽️</span>
-                <span>{foodLabel} {stationState?.foodToppedUp ? '✓' : ''}</span>
+                <span>{foodLabel} {stationState.foodToppedUp ? '✓' : ''}</span>
               </button>
               <button
-                onClick={() => stationState && setWaterToppedUp(stationId, !stationState.waterToppedUp)}
+                onClick={() => setWaterToppedUp(stationId, !stationState.waterToppedUp)}
                 className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                  stationState?.waterToppedUp
+                  stationState.waterToppedUp
                     ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'border-border bg-card text-muted-foreground'
                 }`}
               >
                 <span className="text-xl">💧</span>
-                <span>Water {stationState?.waterToppedUp ? '✓' : ''}</span>
+                <span>Water {stationState.waterToppedUp ? '✓' : ''}</span>
               </button>
             </>
           )}
@@ -222,8 +297,8 @@ export default function StationChecklistPage() {
                 <CatCard
                   key={cat.id}
                   cat={cat}
-                  seen={stationState?.seenCatIds.includes(cat.id) ?? false}
-                  hasWelfareConcern={!!stationState?.welfare[cat.id]}
+                  seen={stationState.seenCatIds.includes(cat.id)}
+                  hasWelfareConcern={!!stationState.welfare[cat.id]}
                   onToggle={() => toggleCatSeen(stationId, cat.id)}
                   onWelfareConcern={() => setWelfareCatId(cat.id)}
                 />
@@ -235,9 +310,9 @@ export default function StationChecklistPage() {
                   key={cat.id}
                   cat={cat}
                   seen={true}
-                  hasWelfareConcern={false}
+                  hasWelfareConcern={!!stationState.welfare[cat.id]}
                   onToggle={() => removeGuestCat(stationId, cat.id)}
-                  onWelfareConcern={() => {}}
+                  onWelfareConcern={() => setWelfareCatId(cat.id)}
                 />
               ))}
 
@@ -257,27 +332,44 @@ export default function StationChecklistPage() {
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">New cats seen</p>
 
-          {(stationState?.additionalCats ?? []).length > 0 && (
+          {additionalCats.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {(stationState?.additionalCats ?? []).map((cat, i) => (
-                <div key={i} className="flex items-center gap-2 bg-muted rounded-2xl overflow-hidden pr-2 py-1 pl-1">
-                  {cat.photoDataUrl ? (
-                    <img src={cat.photoDataUrl} alt={cat.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-xl bg-muted-foreground/20 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs">🐱</span>
-                    </div>
-                  )}
-                  <span className="text-sm">{cat.name}</span>
-                  <button
-                    onClick={() => removeAdditionalCat(stationId, i)}
-                    className="text-muted-foreground text-base leading-none ml-1"
-                    aria-label="Remove"
+              {additionalCats.map((cat, i) => {
+                const photoUrl = cat.photoKey ? photoMap[cat.photoKey] : undefined
+                const hasConcern = !!cat.welfareNotes
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-1.5 rounded-2xl overflow-hidden pr-2 py-1 pl-1 border ${
+                      hasConcern ? 'bg-amber-500/10 border-amber-500/40' : 'bg-muted border-transparent'
+                    }`}
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    {photoUrl ? (
+                      <img src={photoUrl} alt={cat.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-xl bg-muted-foreground/20 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs">🐱</span>
+                      </div>
+                    )}
+                    <span className="text-sm">{cat.name}</span>
+                    <button
+                      onClick={() => setWelfareAdditionalCatIndex(i)}
+                      className={`text-sm leading-none px-0.5 ${hasConcern ? '' : 'opacity-50'}`}
+                      aria-label="Flag welfare concern"
+                      title="Flag welfare concern"
+                    >
+                      ⚠️
+                    </button>
+                    <button
+                      onClick={() => handleRemoveAdditionalCat(i)}
+                      className="text-muted-foreground text-base leading-none ml-0.5"
+                      aria-label="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -301,10 +393,7 @@ export default function StationChecklistPage() {
                   value={newCatName}
                   onChange={e => setNewCatName(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && newCatName.trim()) {
-                      addAdditionalCat(stationId, { name: newCatName.trim(), photoDataUrl: newCatPhoto })
-                      setNewCatName(''); setNewCatPhoto(undefined); setShowAddCat(false)
-                    }
+                    if (e.key === 'Enter' && newCatName.trim()) handleAddCat()
                     if (e.key === 'Escape') { setNewCatName(''); setNewCatPhoto(undefined); setShowAddCat(false) }
                   }}
                   placeholder="Describe the cat…"
@@ -320,13 +409,7 @@ export default function StationChecklistPage() {
                   📷
                 </button>
                 <button
-                  onClick={() => {
-                    if (newCatName.trim()) {
-                      addAdditionalCat(stationId, { name: newCatName.trim(), photoDataUrl: newCatPhoto })
-                      setNewCatName(''); setNewCatPhoto(undefined)
-                    }
-                    setShowAddCat(false)
-                  }}
+                  onClick={handleAddCat}
                   className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
                 >
                   Add
@@ -374,7 +457,7 @@ export default function StationChecklistPage() {
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Notes</p>
           <textarea
-            value={stationState?.notes ?? ''}
+            value={stationState.notes}
             onChange={e => setStationNotes(stationId, e.target.value)}
             placeholder="Any observations about this station…"
             className="w-full h-20 rounded-xl border border-border bg-card px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
@@ -390,14 +473,25 @@ export default function StationChecklistPage() {
         </button>
       </div>
 
-      {/* Welfare modal */}
+      {/* Welfare modal — registered / guest cats */}
       {welfareCatId && welfareCat && (
         <WelfareConcernModal
           catName={welfareCat.name}
-          existingNotes={stationState?.welfare[welfareCatId] ?? ''}
+          existingNotes={stationState.welfare[welfareCatId] ?? ''}
           onSave={notes => { setWelfareConcern(stationId, welfareCatId, notes); setWelfareCatId(null) }}
           onClear={() => { setWelfareConcern(stationId, welfareCatId, null); setWelfareCatId(null) }}
           onClose={() => setWelfareCatId(null)}
+        />
+      )}
+
+      {/* Welfare modal — newly-added cats with no DB record */}
+      {welfareAdditionalCatIndex !== null && welfareAdditionalCat && (
+        <WelfareConcernModal
+          catName={welfareAdditionalCat.name}
+          existingNotes={welfareAdditionalCat.welfareNotes ?? ''}
+          onSave={notes => { setAdditionalCatWelfare(stationId, welfareAdditionalCatIndex, notes); setWelfareAdditionalCatIndex(null) }}
+          onClear={() => { setAdditionalCatWelfare(stationId, welfareAdditionalCatIndex, null); setWelfareAdditionalCatIndex(null) }}
+          onClose={() => setWelfareAdditionalCatIndex(null)}
         />
       )}
 

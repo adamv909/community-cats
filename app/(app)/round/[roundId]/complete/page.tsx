@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { syncCompletedRound } from '@/lib/supabase/services/sync'
@@ -10,13 +10,29 @@ type SyncState = 'idle' | 'syncing' | 'done' | 'error'
 export default function RoundCompletePage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
-  const { activeRound, completeRound } = useFeedingRoundStore()
+  const { activeRound, hasHydrated, completeRound, setSyncStatus } = useFeedingRoundStore()
   const [notes, setNotes] = useState(activeRound?.notes ?? '')
   const [syncState, setSyncState] = useState<SyncState>('idle')
 
-  if (!activeRound || activeRound.id !== roundId) {
-    router.replace('/home')
-    return null
+  const roundMissing = hasHydrated && (!activeRound || activeRound.id !== roundId)
+
+  // Redirect from an effect, not during render — calling router.replace() directly in the
+  // render body triggers React's "Cannot update a component while rendering a different
+  // component" error, since it synchronously updates the router outside this component.
+  useEffect(() => {
+    if (roundMissing) router.replace('/home')
+  }, [roundMissing, router])
+
+  // Zustand's persist rehydrates localStorage asynchronously — on a cold load (PWA relaunch,
+  // hard refresh) activeRound is briefly null even though the round is on disk. Wait for
+  // hydration before deciding there's really nothing here, or this bounces the user to
+  // /home and discards nothing but shows them a false "no round" state.
+  if (!hasHydrated || roundMissing || !activeRound) {
+    return (
+      <div className="p-4 text-center pt-20">
+        <p className="text-muted-foreground text-sm">Loading…</p>
+      </div>
+    )
   }
 
   const stationStates = Object.values(activeRound.stationStates)
@@ -29,21 +45,24 @@ export default function RoundCompletePage() {
   const allFood = stationStates.every(s =>
     s.foodLevel === 'full' || s.foodToppedUp
   )
-  const allWater = stationStates.every(s =>
-    s.foodLevel === 'full' || s.waterToppedUp
-  )
+  const allWater = stationStates.every(s => s.waterToppedUp)
 
   async function handleFinish() {
+    // Single timestamp shared by the store and the synced payload — otherwise completeRound()
+    // would generate its own via a separate `new Date()` call and the two could drift.
     const completedAt = new Date().toISOString()
     const completedRound = { ...activeRound!, completedAt, notes: notes || activeRound!.notes }
-    completeRound(notes)
+    completeRound(notes, completedAt)
     setSyncState('syncing')
+    setSyncStatus('syncing')
     try {
       await syncCompletedRound(completedRound)
       setSyncState('done')
+      setSyncStatus('synced')
     } catch (err) {
       console.error('Sync failed:', err)
       setSyncState('error')
+      setSyncStatus('failed')
     }
     router.push(`/round/${roundId}/report`)
   }
@@ -105,7 +124,7 @@ export default function RoundCompletePage() {
       </button>
       {syncState === 'error' && (
         <p className="text-xs text-center text-amber-600 dark:text-amber-400 mt-2">
-          Could not sync to server — your report is still available.
+          Could not sync to server — your report is still available, and you can retry from there.
         </p>
       )}
     </div>

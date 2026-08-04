@@ -42,7 +42,7 @@ export function GuestCatModal({ excludeCatIds, selectedCatIds, onAdd, onRemove, 
     .filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card rounded-t-3xl shadow-xl flex flex-col" style={{ maxHeight: '80vh' }}>
         {/* Header */}

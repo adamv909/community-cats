@@ -18,7 +18,7 @@ export function WelfareConcernModal({ catName, existingNotes, onSave, onClear, o
   }, [existingNotes])
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card rounded-t-3xl p-6 pb-10 shadow-xl">
         <div className="flex items-center gap-3 mb-4">

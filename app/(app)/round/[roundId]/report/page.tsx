@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
 import { fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { generateReport } from '@/lib/report/generator'
+import { syncCompletedRound } from '@/lib/supabase/services/sync'
+import { getPhotos, deletePhotos } from '@/lib/db/photo-store'
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const [header, data] = dataUrl.split(',')
@@ -20,16 +22,19 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 interface NewCatPhoto {
   catName: string
   dataUrl: string
+  photoKey: string
 }
 
 export default function ReportPage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
-  const { activeRound, clearRound } = useFeedingRoundStore()
+  const { activeRound, hasHydrated, clearRound, setSyncStatus } = useFeedingRoundStore()
   const [reportText, setReportText] = useState('')
   const [shared, setShared] = useState(false)
   const [photoShared, setPhotoShared] = useState(false)
-  const [newCatPhotos, setNewCatPhotos] = useState<NewCatPhoto[]>([])
+  const [photoShareError, setPhotoShareError] = useState(false)
+  const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
+  const [retrying, setRetrying] = useState(false)
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
 
@@ -37,11 +42,37 @@ export default function ReportPage() {
     ? [...new Set(Object.values(activeRound.stationStates).flatMap(s => s.seenCatIds))]
     : []
 
-  const { data: seenCats } = useQuery({
+  const { data: seenCats, error: seenCatsError, refetch: refetchSeenCats } = useQuery({
     queryKey: ['seen-cats', allSeenCatIds],
     queryFn: () => fetchCatsByIds(allSeenCatIds),
     enabled: allSeenCatIds.length > 0,
   })
+
+  // additionalCats only carry a photoKey (IndexedDB reference) — resolve to data URLs for display/share
+  const additionalCatsWithPhotos = useMemo(() => {
+    if (!activeRound) return []
+    return Object.values(activeRound.stationStates).flatMap(s =>
+      (s.additionalCats ?? []).filter(c => c.photoKey)
+    )
+  }, [activeRound])
+  const photoKeys = useMemo(
+    () => additionalCatsWithPhotos.map(c => c.photoKey!).sort(),
+    [additionalCatsWithPhotos]
+  )
+
+  useEffect(() => {
+    // Nothing to fetch — downstream lookups are keyed off the current additionalCats list,
+    // so a stale/unset photoMap for an empty key set is harmless.
+    if (photoKeys.length === 0) return
+    let cancelled = false
+    getPhotos(photoKeys).then(map => { if (!cancelled) setPhotoMap(map) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoKeys.join(',')])
+
+  const newCatPhotos: NewCatPhoto[] = additionalCatsWithPhotos
+    .filter(c => photoMap[c.photoKey!])
+    .map(c => ({ catName: c.name, dataUrl: photoMap[c.photoKey!], photoKey: c.photoKey! }))
 
   useEffect(() => {
     if (!activeRound || !routes) return
@@ -51,7 +82,6 @@ export default function ReportPage() {
     if (!route) return
 
     const areaMap = new Map<string, { name: string; hasWelfareConcern: boolean; welfareNotes: string }[]>()
-    const photos: NewCatPhoto[] = []
 
     for (const rs of route.route_stations) {
       const station = rs.station
@@ -68,12 +98,10 @@ export default function ReportPage() {
 
       for (const cat of stationState.additionalCats ?? []) {
         if (!areaMap.has(station.area)) areaMap.set(station.area, [])
-        areaMap.get(station.area)!.push({ name: cat.name, hasWelfareConcern: false, welfareNotes: '' })
-        if (cat.photoDataUrl) photos.push({ catName: cat.name, dataUrl: cat.photoDataUrl })
+        const welfareNotes = cat.welfareNotes ?? ''
+        areaMap.get(station.area)!.push({ name: cat.name, hasWelfareConcern: !!welfareNotes, welfareNotes })
       }
     }
-
-    setNewCatPhotos(photos)
 
     const stationEntries = route.route_stations.map(rs => {
       const state = activeRound.stationStates[rs.station.id]
@@ -103,6 +131,26 @@ export default function ReportPage() {
     setReportText(text)
   }, [activeRound, routes, seenCats])
 
+  const roundMissing = hasHydrated && (!activeRound || activeRound.id !== roundId)
+
+  // Redirect from an effect, not during render — calling router.replace() directly in the
+  // render body triggers React's "Cannot update a component while rendering a different
+  // component" error, since it synchronously updates the router outside this component.
+  useEffect(() => {
+    if (roundMissing) router.replace('/home')
+  }, [roundMissing, router])
+
+  // Guarded after all hooks. Zustand's persist rehydrates localStorage asynchronously — on a
+  // cold load (PWA relaunch, hard refresh) activeRound is briefly null even though the round
+  // is on disk, so wait for hydration before deciding there's really nothing here.
+  if (!hasHydrated || roundMissing || !activeRound) {
+    return (
+      <div className="p-4 text-center pt-20">
+        <p className="text-muted-foreground text-sm">Loading…</p>
+      </div>
+    )
+  }
+
   async function handleShare() {
     try {
       if (navigator.share) {
@@ -120,20 +168,58 @@ export default function ReportPage() {
   }
 
   async function handleSharePhotos() {
-    const files = newCatPhotos.map((p, i) =>
-      dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`)
-    )
+    setPhotoShareError(false)
+    const files = newCatPhotos.map((p, i) => dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`))
+    const canUseWebShare = !!navigator.share && (!navigator.canShare || navigator.canShare({ files }))
+
+    if (!canUseWebShare) {
+      // No Web Share API (or it can't take files) — fall back to individual downloads
+      // rather than silently claiming success.
+      try {
+        for (const file of files) {
+          const url = URL.createObjectURL(file)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = file.name
+          a.click()
+          URL.revokeObjectURL(url)
+        }
+        setPhotoShared(true)
+      } catch (err) {
+        console.error('Photo download fallback failed:', err)
+        setPhotoShareError(true)
+      }
+      return
+    }
+
     try {
       await navigator.share({ files, title: 'New cats seen today' })
       setPhotoShared(true)
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        setPhotoShared(true)
-      }
+      if ((err as Error).name === 'AbortError') return
+      console.error('Photo share failed:', err)
+      setPhotoShareError(true)
     }
   }
 
-  function handleDone() {
+  async function handleRetrySync() {
+    setRetrying(true)
+    setSyncStatus('syncing')
+    try {
+      await syncCompletedRound(activeRound!)
+      setSyncStatus('synced')
+    } catch (err) {
+      console.error('Retry sync failed:', err)
+      setSyncStatus('failed')
+    }
+    setRetrying(false)
+  }
+
+  async function handleDone() {
+    const allPhotoKeys = Object.values(activeRound!.stationStates)
+      .flatMap(s => (s.additionalCats ?? []).map(c => c.photoKey))
+      .filter((k): k is string => !!k)
+    await deletePhotos(allPhotoKeys)
     clearRound()
     router.push('/home')
   }
@@ -142,6 +228,39 @@ export default function ReportPage() {
     <div className="max-w-lg mx-auto p-4 pt-6 pb-8">
       <h1 className="text-xl font-semibold mb-1">Your report</h1>
       <p className="text-sm text-muted-foreground mb-4">Review and edit before sharing</p>
+
+      {activeRound.syncStatus === 'failed' && (
+        <div className="mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+          <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+            ⚠️ This round hasn&apos;t saved to the server
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+            Your report text below is safe to share now — but the underlying data (cat sightings, food levels) is only on this device until sync succeeds.
+          </p>
+          <button
+            onClick={handleRetrySync}
+            disabled={retrying}
+            className="text-xs font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/40 rounded-lg px-3 py-1.5 disabled:opacity-50"
+          >
+            {retrying ? 'Retrying…' : 'Retry sync'}
+          </button>
+        </div>
+      )}
+
+      {seenCatsError && (
+        <div className="mb-4 p-4 rounded-2xl bg-destructive/10 border border-destructive/30">
+          <p className="text-sm font-semibold text-destructive">Couldn&apos;t load cat names</p>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+            The report below may be missing some cats seen this round. Check your connection and try again.
+          </p>
+          <button
+            onClick={() => refetchSeenCats()}
+            className="text-xs font-semibold text-destructive border border-destructive/40 rounded-lg px-3 py-1.5"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <textarea
         value={reportText}
@@ -157,7 +276,7 @@ export default function ReportPage() {
           </p>
           <div className="flex gap-2 flex-wrap mb-3">
             {newCatPhotos.map((p, i) => (
-              <div key={i} className="relative">
+              <div key={p.photoKey ?? i} className="relative">
                 <img
                   src={p.dataUrl}
                   alt={p.catName}
@@ -173,6 +292,9 @@ export default function ReportPage() {
           >
             {photoShared ? '✓ Photos shared' : `📷 Share ${newCatPhotos.length} photo${newCatPhotos.length !== 1 ? 's' : ''}`}
           </button>
+          {photoShareError && (
+            <p className="text-xs text-destructive mt-1.5">Couldn&apos;t share photos — try again.</p>
+          )}
         </div>
       )}
 

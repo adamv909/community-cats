@@ -32,7 +32,7 @@ export interface ReportInput {
 }
 
 export function generateReport(input: ReportInput): string {
-  const date = new Date().toLocaleDateString('en-GB', {
+  const date = new Date(input.startedAt).toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
   const roundLabel = input.roundType === 'morning' ? 'Morning Round' : 'Evening Round'

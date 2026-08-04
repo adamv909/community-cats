@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
+import { fetchActiveRoutes, type RouteStation } from '@/lib/supabase/services/routes'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
+import { usePreferencesStore } from '@/store/preferences-store'
 
 export default function HomePage() {
   const router = useRouter()
@@ -14,6 +15,31 @@ export default function HomePage() {
     queryFn: fetchActiveRoutes,
   })
   const { activeRound, clearRound } = useFeedingRoundStore()
+  const { getStationOrder } = usePreferencesStore()
+
+  const activeRoute = activeRound ? routes?.find(r => r.id === activeRound.routeId) : undefined
+
+  function handleContinueTap() {
+    if (!activeRound || !activeRoute) return
+    const savedOrder = getStationOrder(activeRoute.id)
+    let orderedStations: RouteStation[] = activeRoute.route_stations
+    if (savedOrder) {
+      const map = new Map(activeRoute.route_stations.map(rs => [rs.station.id, rs]))
+      const ordered = savedOrder.map(sid => map.get(sid)).filter(Boolean) as RouteStation[]
+      const inOrder = new Set(savedOrder)
+      activeRoute.route_stations.forEach(rs => { if (!inOrder.has(rs.station.id)) ordered.push(rs) })
+      orderedStations = ordered
+    }
+    // Walk the full route in order — covers stations never opened yet, not just
+    // ones already in stationStates, so a partially-started round doesn't get
+    // sent straight to the complete screen while stations remain unvisited.
+    const incomplete = orderedStations.find(rs => !activeRound.stationStates[rs.station.id]?.completedAt)
+    if (incomplete) {
+      router.push(`/round/${activeRound.id}/station/${incomplete.station.id}`)
+    } else {
+      router.push(`/round/${activeRound.id}/complete`)
+    }
+  }
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -30,15 +56,7 @@ export default function HomePage() {
         <div className="mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 overflow-hidden">
           <div
             className="p-4 cursor-pointer"
-            onClick={() => {
-              const stationIds = Object.keys(activeRound.stationStates)
-              const incomplete = stationIds.find(id => !activeRound.stationStates[id].completedAt)
-              if (incomplete) {
-                router.push(`/round/${activeRound.id}/station/${incomplete}`)
-              } else {
-                router.push(`/round/${activeRound.id}/complete`)
-              }
-            }}
+            onClick={handleContinueTap}
           >
             <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Round in progress</p>
             <p className="text-sm text-foreground">Tap to continue your current round →</p>
