@@ -11,7 +11,6 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: 'JLT Community Cats',
   description: 'Community cat feeding round tracker for JLT volunteers',
-  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
