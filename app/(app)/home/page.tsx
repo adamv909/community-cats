@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import { fetchActiveRoutes, type RouteStation } from '@/lib/supabase/services/routes'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { usePreferencesStore } from '@/store/preferences-store'
+import { createClient } from '@/lib/supabase/client'
 
 export default function HomePage() {
   const router = useRouter()
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
   const { data: routes, isLoading, error } = useQuery({
     queryKey: ['routes'],
     queryFn: fetchActiveRoutes,
@@ -45,11 +47,29 @@ export default function HomePage() {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
+  async function handleSignOut() {
+    setSigningOut(true)
+    // Round data stays in localStorage on sign-out — it's an unsynced draft, not tied to
+    // the session, and discarding it silently here would be data loss with no undo.
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.replace('/signin')
+  }
+
   return (
     <div className="p-4 max-w-lg mx-auto">
-      <div className="pt-4 pb-6">
-        <p className="text-sm text-muted-foreground">{today}</p>
-        <h1 className="text-2xl font-semibold mt-0.5">Feeding Rounds</h1>
+      <div className="pt-4 pb-6 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted-foreground">{today}</p>
+          <h1 className="text-2xl font-semibold mt-0.5">Feeding Rounds</h1>
+        </div>
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="flex-shrink-0 text-xs text-muted-foreground underline underline-offset-2 mt-1.5 disabled:opacity-50"
+        >
+          {signingOut ? 'Signing out…' : 'Sign out'}
+        </button>
       </div>
 
       {activeRound && !activeRound.completedAt && (
