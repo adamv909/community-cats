@@ -9,13 +9,19 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'Cat Feeding Rounds',
-  description: 'Community cat feeding round tracker',
+  title: 'JLT Community Cats',
+  description: 'Community cat feeding round tracker for JLT volunteers',
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Cat Rounds',
   },
+  icons: {
+    icon: '/icons/icon-192.png',
+    apple: '/icons/apple-touch-icon.png',
+  },
+  themeColor: '#0d9488',
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
