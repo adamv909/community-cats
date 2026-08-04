@@ -1,0 +1,94 @@
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
+import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
+import { useFeedingRoundStore } from '@/store/feeding-round-store'
+
+export default function HomePage() {
+  const router = useRouter()
+  const { data: routes, isLoading, error } = useQuery({
+    queryKey: ['routes'],
+    queryFn: fetchActiveRoutes,
+  })
+  const activeRound = useFeedingRoundStore(s => s.activeRound)
+
+  const today = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  })
+
+  return (
+    <div className="p-4 max-w-lg mx-auto">
+      <div className="pt-4 pb-6">
+        <p className="text-sm text-muted-foreground">{today}</p>
+        <h1 className="text-2xl font-semibold mt-0.5">Feeding Rounds</h1>
+      </div>
+
+      {activeRound && !activeRound.completedAt && (
+        <div
+          className="mb-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 cursor-pointer"
+          onClick={() => {
+            const stationIds = Object.keys(activeRound.stationStates)
+            const incomplete = stationIds.find(id => !activeRound.stationStates[id].completedAt)
+            if (incomplete) {
+              router.push(`/round/${activeRound.id}/station/${incomplete}`)
+            } else {
+              router.push(`/round/${activeRound.id}/complete`)
+            }
+          }}
+        >
+          <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Round in progress</p>
+          <p className="text-sm text-foreground">Tap to continue your current round →</p>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-24 rounded-2xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-2xl border border-destructive/30 bg-destructive/10">
+          <p className="text-sm text-destructive">Could not load routes. Check your connection.</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {routes?.map(route => {
+          const stationCount = route.route_stations.length
+          return (
+            <button
+              key={route.id}
+              onClick={() => router.push(`/route/${route.id}`)}
+              className="w-full text-left p-4 rounded-2xl border border-border bg-card active:scale-[0.98] transition-transform"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-semibold text-base">{route.name}</h2>
+                  {route.description && (
+                    <p className="text-sm text-muted-foreground mt-0.5 truncate">{route.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    {stationCount} station{stationCount !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <span className="text-muted-foreground mt-0.5">›</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {routes?.length === 0 && !isLoading && (
+        <div className="text-center py-12">
+          <p className="text-4xl mb-3">🗺️</p>
+          <p className="text-muted-foreground text-sm">No active routes found.</p>
+          <p className="text-muted-foreground text-xs mt-1">Ask your admin to set up a route.</p>
+        </div>
+      )}
+    </div>
+  )
+}
