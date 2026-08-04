@@ -38,9 +38,19 @@ export function generateReport(input: ReportInput): string {
   const startTime = fmt(input.startedAt)
   const completedTime = input.completedAt ? fmt(input.completedAt) : null
 
+  const allCats = input.areas.flatMap(a => a.cats)
+  const totalCats = allCats.length
+  const totalWelfare = allCats.filter(c => c.hasWelfareConcern).length
+
+  const summary = [
+    `${totalCats} cat${totalCats !== 1 ? 's' : ''} seen`,
+    totalWelfare > 0 ? `${totalWelfare} welfare concern${totalWelfare !== 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(' · ')
+
   const lines: string[] = [
     `🐱 Cat Feeding Report – ${roundLabel} – ${date}`,
     completedTime ? `${startTime} – ${completedTime}` : `Started ${startTime}`,
+    summary,
   ]
   lines.push('')
 
