@@ -10,9 +10,17 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      // On Vercel, use x-forwarded-host to get the public domain
+      const forwardedHost = request.headers.get('x-forwarded-host')
+      const base = forwardedHost ? `https://${forwardedHost}` : origin
+      return NextResponse.redirect(`${base}${next}`)
     }
+    // Redirect to signin with the actual error message for debugging
+    const msg = encodeURIComponent(error.message ?? 'unknown error')
+    const forwardedHost = request.headers.get('x-forwarded-host')
+    const base = forwardedHost ? `https://${forwardedHost}` : origin
+    return NextResponse.redirect(`${base}/signin?error=${msg}`)
   }
 
-  return NextResponse.redirect(`${origin}/signin?error=Could+not+sign+you+in`)
+  return NextResponse.redirect(`${origin}/signin?error=No+code+provided`)
 }

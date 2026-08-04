@@ -1,16 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 // Prevent static pre-rendering — this page always needs to run in the browser
 export const dynamic = 'force-dynamic'
 
 export default function SignInPage() {
+  const searchParams = useSearchParams()
+  const callbackError = searchParams.get('error')
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(callbackError)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
