@@ -35,6 +35,7 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
       visited_at: state.visitedAt,
       completed_at: state.completedAt,
       food_topped_up: state.foodToppedUp,
+      food_level: state.foodLevel ?? null,
       water_topped_up: state.waterToppedUp,
       notes: state.notes || null,
     })
