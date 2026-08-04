@@ -24,8 +24,14 @@ export default function RoundCompletePage() {
   const welfareFlagged = stationStates.reduce(
     (acc, s) => acc + Object.keys(s.welfare).length, 0
   )
-  const allFood = stationStates.every(s => s.foodToppedUp)
-  const allWater = stationStates.every(s => s.waterToppedUp)
+  // Only flag food/water as outstanding when food arrived empty or medium and wasn't topped up.
+  // If food was already full on arrival (or no level set, e.g. evening round), topped-up state alone decides.
+  const allFood = stationStates.every(s =>
+    s.foodLevel === 'full' || s.foodToppedUp
+  )
+  const allWater = stationStates.every(s =>
+    s.foodLevel === 'full' || s.waterToppedUp
+  )
 
   async function handleFinish() {
     const completedAt = new Date().toISOString()
