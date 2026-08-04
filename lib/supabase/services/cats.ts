@@ -25,6 +25,17 @@ export async function fetchCatsByIds(ids: string[]) {
   return data ?? []
 }
 
+export async function fetchAllCats() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('cats')
+    .select('id, name, photo_url, description, status, primary_station_id')
+    .eq('is_active', true)
+    .order('name')
+  if (error) throw error
+  return data ?? []
+}
+
 export async function insertProvisionalCat(cat: {
   name: string
   description: string | null

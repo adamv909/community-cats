@@ -29,15 +29,6 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // If Supabase redirected here with an auth code, forward it to the callback handler
-  const code = request.nextUrl.searchParams.get('code')
-  if (code && !user) {
-    const callbackUrl = new URL('/auth/callback', request.url)
-    callbackUrl.searchParams.set('code', code)
-    callbackUrl.searchParams.set('next', pathname)
-    return NextResponse.redirect(callbackUrl)
-  }
-
   // Everything else requires authentication
   if (!user) {
     return NextResponse.redirect(new URL('/signin', request.url))

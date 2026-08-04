@@ -54,6 +54,12 @@ export default function ReportPage() {
           welfareNotes,
         })
       }
+
+      for (const cat of stationState.additionalCats ?? []) {
+        const area = station.area
+        if (!areaMap.has(area)) areaMap.set(area, [])
+        areaMap.get(area)!.push({ name: cat.name, hasWelfareConcern: false, welfareNotes: '' })
+      }
     }
 
     const stationStates = Object.values(activeRound.stationStates)
@@ -64,12 +70,19 @@ export default function ReportPage() {
       ...stationStates.map(s => s.notes).filter(Boolean),
     ].filter(Boolean).join('\n')
 
+    const stationFoodLevels = route.route_stations.map(rs => ({
+      name: rs.station.name,
+      foodLevel: (activeRound.stationStates[rs.station.id]?.foodLevel) ?? null,
+    }))
+
     const text = generateReport({
       areas: [...areaMap.entries()].map(([area, cats]) => ({ area, cats })),
       generalNotes,
       allFoodToppedUp: allFood,
       allWaterToppedUp: allWater,
       roundType: route.round_type,
+      completedAt: activeRound.completedAt,
+      stationFoodLevels,
     })
 
     setReportText(text)

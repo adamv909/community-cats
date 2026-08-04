@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
@@ -7,11 +8,12 @@ import { useFeedingRoundStore } from '@/store/feeding-round-store'
 
 export default function HomePage() {
   const router = useRouter()
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const { data: routes, isLoading, error } = useQuery({
     queryKey: ['routes'],
     queryFn: fetchActiveRoutes,
   })
-  const activeRound = useFeedingRoundStore(s => s.activeRound)
+  const { activeRound, clearRound } = useFeedingRoundStore()
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -25,20 +27,48 @@ export default function HomePage() {
       </div>
 
       {activeRound && !activeRound.completedAt && (
-        <div
-          className="mb-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 cursor-pointer"
-          onClick={() => {
-            const stationIds = Object.keys(activeRound.stationStates)
-            const incomplete = stationIds.find(id => !activeRound.stationStates[id].completedAt)
-            if (incomplete) {
-              router.push(`/round/${activeRound.id}/station/${incomplete}`)
-            } else {
-              router.push(`/round/${activeRound.id}/complete`)
-            }
-          }}
-        >
-          <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Round in progress</p>
-          <p className="text-sm text-foreground">Tap to continue your current round →</p>
+        <div className="mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 overflow-hidden">
+          <div
+            className="p-4 cursor-pointer"
+            onClick={() => {
+              const stationIds = Object.keys(activeRound.stationStates)
+              const incomplete = stationIds.find(id => !activeRound.stationStates[id].completedAt)
+              if (incomplete) {
+                router.push(`/round/${activeRound.id}/station/${incomplete}`)
+              } else {
+                router.push(`/round/${activeRound.id}/complete`)
+              }
+            }}
+          >
+            <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Round in progress</p>
+            <p className="text-sm text-foreground">Tap to continue your current round →</p>
+          </div>
+          {confirmCancel ? (
+            <div className="flex items-center gap-2 px-4 pb-4">
+              <p className="text-xs text-muted-foreground flex-1">Cancel this round?</p>
+              <button
+                onClick={() => { clearRound(); setConfirmCancel(false) }}
+                className="text-xs font-semibold text-red-500 px-3 py-1.5 rounded-lg border border-red-400/40"
+              >
+                Yes, cancel
+              </button>
+              <button
+                onClick={() => setConfirmCancel(false)}
+                className="text-xs text-muted-foreground px-3 py-1.5 rounded-lg border border-border"
+              >
+                Keep
+              </button>
+            </div>
+          ) : (
+            <div className="px-4 pb-3">
+              <button
+                onClick={() => setConfirmCancel(true)}
+                className="text-xs text-muted-foreground underline underline-offset-2"
+              >
+                Cancel round
+              </button>
+            </div>
+          )}
         </div>
       )}
 

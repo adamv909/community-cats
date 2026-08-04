@@ -34,6 +34,8 @@ export default function RouteOverviewPage() {
     }
   }
 
+  const hasDifferentActiveRound = activeRound && !activeRound.completedAt && activeRound.routeId !== id
+
   function handleContinueRound() {
     if (!activeRound) return
     const incomplete = route!.route_stations.find(rs =>
@@ -80,15 +82,28 @@ export default function RouteOverviewPage() {
             >
               Continue round →
             </button>
+            <button
+              onClick={handleStartRound}
+              className="w-full h-11 rounded-2xl border border-border text-muted-foreground font-medium text-sm active:scale-[0.98] transition-transform"
+            >
+              Start over
+            </button>
           </div>
         ) : (
-          <button
-            onClick={handleStartRound}
-            disabled={!user}
-            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform disabled:opacity-50"
-          >
-            Start round
-          </button>
+          <div className="space-y-2">
+            {hasDifferentActiveRound && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 text-center pb-1">
+                Starting this round will cancel the round in progress.
+              </p>
+            )}
+            <button
+              onClick={handleStartRound}
+              disabled={!user}
+              className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform disabled:opacity-50"
+            >
+              Start round
+            </button>
+          </div>
         )}
       </div>
 

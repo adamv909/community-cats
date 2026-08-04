@@ -1,18 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
 import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
-import { fetchCatsByStation } from '@/lib/supabase/services/cats'
+import { fetchCatsByStation, fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { CatCard } from '@/components/feeding/CatCard'
 import { WelfareConcernModal } from '@/components/feeding/WelfareConcernModal'
+import { GuestCatModal } from '@/components/feeding/GuestCatModal'
 
 export default function StationChecklistPage() {
   const { roundId, stationId } = useParams() as { roundId: string; stationId: string }
   const router = useRouter()
   const [welfareCatId, setWelfareCatId] = useState<string | null>(null)
+  const [showAddCat, setShowAddCat] = useState(false)
+  const [showGuestModal, setShowGuestModal] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatPhoto, setNewCatPhoto] = useState<string | undefined>(undefined)
+  const addCatInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
   const { data: cats, isLoading: catsLoading } = useQuery({
@@ -22,7 +29,9 @@ export default function StationChecklistPage() {
 
   const {
     activeRound, openStation, toggleCatSeen,
-    setFoodToppedUp, setWaterToppedUp, setStationNotes,
+    setFoodToppedUp, setFoodLevel, setWaterToppedUp, setStationNotes,
+    addAdditionalCat, removeAdditionalCat,
+    addGuestCat, removeGuestCat,
     setWelfareConcern, completeStation,
   } = useFeedingRoundStore()
 
@@ -32,6 +41,13 @@ export default function StationChecklistPage() {
   }
 
   const stationState = activeRound?.stationStates[stationId]
+  const guestCatIds = stationState?.guestCatIds ?? []
+
+  const { data: guestCats = [] } = useQuery({
+    queryKey: ['guest-cats', guestCatIds],
+    queryFn: () => fetchCatsByIds(guestCatIds),
+    enabled: guestCatIds.length > 0,
+  })
 
   // Find station info and route context
   const route = routes?.find(r => r.id === activeRound?.routeId)
@@ -42,6 +58,7 @@ export default function StationChecklistPage() {
   const nextStation = routeStations[currentIndex + 1]?.station
   const isLastStation = currentIndex === routeStations.length - 1
 
+  const expectedCatIds = (cats ?? []).map(c => c.id)
   const welfareCat = welfareCatId ? cats?.find(c => c.id === welfareCatId) : null
 
   function handleCompleteStation() {
@@ -68,6 +85,8 @@ export default function StationChecklistPage() {
       </div>
     )
   }
+
+  const totalSeen = stationState ? stationState.seenCatIds.length + (stationState.additionalCats ?? []).length : 0
 
   return (
     <div className="max-w-lg mx-auto pb-8">
@@ -97,37 +116,98 @@ export default function StationChecklistPage() {
 
       <div className="px-4 pt-4 space-y-5">
         {/* Food & Water */}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => stationState && setFoodToppedUp(stationId, !stationState.foodToppedUp)}
-            className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-              stationState?.foodToppedUp
-                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                : 'border-border bg-card text-muted-foreground'
-            }`}
-          >
-            <span className="text-xl">🍽️</span>
-            <span>{foodLabel} {stationState?.foodToppedUp ? '✓' : ''}</span>
-          </button>
-          <button
-            onClick={() => stationState && setWaterToppedUp(stationId, !stationState.waterToppedUp)}
-            className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-              stationState?.waterToppedUp
-                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                : 'border-border bg-card text-muted-foreground'
-            }`}
-          >
-            <span className="text-xl">💧</span>
-            <span>Water {stationState?.waterToppedUp ? '✓' : ''}</span>
-          </button>
+        <div className="space-y-3">
+          {route?.round_type === 'morning' ? (
+            <>
+              {/* Arrival food level */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">🍽️ Dry food on arrival</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['empty', 'medium', 'full'] as const).map(level => {
+                    const selected = stationState?.foodLevel === level
+                    const colour = level === 'empty'
+                      ? 'border-red-400 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : level === 'medium'
+                      ? 'border-amber-400 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      : 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    return (
+                      <button
+                        key={level}
+                        onClick={() => stationState && setFoodLevel(stationId, selected ? null : level)}
+                        className={`h-12 rounded-xl border-2 font-semibold text-sm capitalize transition-all active:scale-95 ${
+                          selected ? colour : 'border-border bg-card text-muted-foreground'
+                        }`}
+                      >
+                        {level}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              {/* Topped up tiles */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => stationState && setFoodToppedUp(stationId, !stationState.foodToppedUp)}
+                    className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                      stationState?.foodToppedUp
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'border-border bg-card text-muted-foreground'
+                    }`}
+                  >
+                    <span className="text-xl">🍽️</span>
+                    <span>Dry food {stationState?.foodToppedUp ? '✓' : ''}</span>
+                  </button>
+                  <button
+                    onClick={() => stationState && setWaterToppedUp(stationId, !stationState.waterToppedUp)}
+                    className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                      stationState?.waterToppedUp
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'border-border bg-card text-muted-foreground'
+                    }`}
+                  >
+                    <span className="text-xl">💧</span>
+                    <span>Water {stationState?.waterToppedUp ? '✓' : ''}</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
+              <button
+                onClick={() => stationState && setFoodToppedUp(stationId, !stationState.foodToppedUp)}
+                className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                  stationState?.foodToppedUp
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <span className="text-xl">🍽️</span>
+                <span>{foodLabel} {stationState?.foodToppedUp ? '✓' : ''}</span>
+              </button>
+              <button
+                onClick={() => stationState && setWaterToppedUp(stationId, !stationState.waterToppedUp)}
+                className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                  stationState?.waterToppedUp
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <span className="text-xl">💧</span>
+                <span>Water {stationState?.waterToppedUp ? '✓' : ''}</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Cats */}
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            Expected cats
-            {stationState && stationState.seenCatIds.length > 0 && (
-              <span className="ml-2 text-emerald-500">{stationState.seenCatIds.length} seen</span>
+            Cats seen
+            {totalSeen > 0 && (
+              <span className="ml-2 text-emerald-500">{totalSeen} seen</span>
             )}
           </p>
 
@@ -135,9 +215,10 @@ export default function StationChecklistPage() {
             <div className="grid grid-cols-2 gap-3">
               {[1, 2, 3, 4].map(i => <div key={i} className="aspect-square rounded-2xl bg-muted animate-pulse" />)}
             </div>
-          ) : cats && cats.length > 0 ? (
+          ) : (
             <div className="grid grid-cols-2 gap-3">
-              {cats.map(cat => (
+              {/* Expected cats */}
+              {(cats ?? []).map(cat => (
                 <CatCard
                   key={cat.id}
                   cat={cat}
@@ -147,9 +228,135 @@ export default function StationChecklistPage() {
                   onWelfareConcern={() => setWelfareCatId(cat.id)}
                 />
               ))}
+
+              {/* Guest cats (registered cats from other stations) */}
+              {guestCats.map(cat => (
+                <CatCard
+                  key={cat.id}
+                  cat={cat}
+                  seen={true}
+                  hasWelfareConcern={false}
+                  onToggle={() => removeGuestCat(stationId, cat.id)}
+                  onWelfareConcern={() => {}}
+                />
+              ))}
+
+              {/* + tile to add an existing cat */}
+              <button
+                onClick={() => setShowGuestModal(true)}
+                className="aspect-square rounded-2xl border-2 border-dashed border-border bg-card flex flex-col items-center justify-center gap-2 text-muted-foreground active:scale-95 transition-transform"
+              >
+                <span className="text-3xl font-light leading-none">+</span>
+                <span className="text-xs font-medium">Add cat</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* New cats seen (no DB record) */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">New cats seen</p>
+
+          {(stationState?.additionalCats ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {(stationState?.additionalCats ?? []).map((cat, i) => (
+                <div key={i} className="flex items-center gap-2 bg-muted rounded-2xl overflow-hidden pr-2 py-1 pl-1">
+                  {cat.photoDataUrl ? (
+                    <img src={cat.photoDataUrl} alt={cat.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-xl bg-muted-foreground/20 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs">🐱</span>
+                    </div>
+                  )}
+                  <span className="text-sm">{cat.name}</span>
+                  <button
+                    onClick={() => removeAdditionalCat(stationId, i)}
+                    className="text-muted-foreground text-base leading-none ml-1"
+                    aria-label="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAddCat ? (
+            <div className="space-y-2">
+              {/* Photo preview */}
+              {newCatPhoto && (
+                <div className="relative w-20 h-20">
+                  <img src={newCatPhoto} alt="Cat photo" className="w-20 h-20 rounded-2xl object-cover" />
+                  <button
+                    onClick={() => setNewCatPhoto(undefined)}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-foreground text-background rounded-full text-xs flex items-center justify-center"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  ref={addCatInputRef}
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newCatName.trim()) {
+                      addAdditionalCat(stationId, { name: newCatName.trim(), photoDataUrl: newCatPhoto })
+                      setNewCatName(''); setNewCatPhoto(undefined); setShowAddCat(false)
+                    }
+                    if (e.key === 'Escape') { setNewCatName(''); setNewCatPhoto(undefined); setShowAddCat(false) }
+                  }}
+                  placeholder="Describe the cat…"
+                  autoFocus
+                  className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                {/* Camera button */}
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  className="w-10 h-10 rounded-xl border border-border bg-card flex items-center justify-center text-lg flex-shrink-0"
+                  aria-label="Take photo"
+                >
+                  📷
+                </button>
+                <button
+                  onClick={() => {
+                    if (newCatName.trim()) {
+                      addAdditionalCat(stationId, { name: newCatName.trim(), photoDataUrl: newCatPhoto })
+                      setNewCatName(''); setNewCatPhoto(undefined)
+                    }
+                    setShowAddCat(false)
+                  }}
+                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
+                >
+                  Add
+                </button>
+              </div>
+              {/* Hidden file input */}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = ev => setNewCatPhoto(ev.target?.result as string)
+                  reader.readAsDataURL(file)
+                  e.target.value = ''
+                }}
+              />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground py-2">No cats assigned to this station yet.</p>
+            <button
+              onClick={() => { setShowAddCat(true); setTimeout(() => addCatInputRef.current?.focus(), 50) }}
+              className="flex items-center gap-2 text-sm text-primary border border-primary/30 rounded-xl px-4 py-2 active:scale-95 transition-transform"
+            >
+              <span className="text-lg font-light leading-none">+</span>
+              <span>Add cat</span>
+            </button>
           )}
         </div>
 
@@ -181,6 +388,17 @@ export default function StationChecklistPage() {
           onSave={notes => { setWelfareConcern(stationId, welfareCatId, notes); setWelfareCatId(null) }}
           onClear={() => { setWelfareConcern(stationId, welfareCatId, null); setWelfareCatId(null) }}
           onClose={() => setWelfareCatId(null)}
+        />
+      )}
+
+      {/* Guest cat picker modal */}
+      {showGuestModal && (
+        <GuestCatModal
+          excludeCatIds={expectedCatIds}
+          selectedCatIds={guestCatIds}
+          onAdd={catId => addGuestCat(stationId, catId)}
+          onRemove={catId => removeGuestCat(stationId, catId)}
+          onClose={() => setShowGuestModal(false)}
         />
       )}
     </div>
