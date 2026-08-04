@@ -16,9 +16,15 @@ export interface StationFoodEntry {
   waterToppedUp: boolean
 }
 
+export interface StationNote {
+  stationName: string
+  note: string
+}
+
 export interface ReportInput {
   areas: AreaEntry[]
-  generalNotes: string
+  roundNotes: string
+  stationNotes: StationNote[]
   roundType: 'morning' | 'evening'
   startedAt: string
   completedAt: string | null
@@ -109,8 +115,17 @@ export function generateReport(input: ReportInput): string {
     }
   }
 
-  if (input.generalNotes.trim()) {
-    lines.push(input.generalNotes.trim())
+  if (input.stationNotes.length > 0) {
+    lines.push('')
+    lines.push('Station notes:')
+    for (const { stationName, note } of input.stationNotes) {
+      lines.push(`• ${stationName}: ${note.trim()}`)
+    }
+  }
+
+  if (input.roundNotes.trim()) {
+    lines.push('')
+    lines.push(`Round notes: ${input.roundNotes.trim()}`)
   }
 
   const concerns = input.areas.flatMap(a => a.cats.filter(c => c.hasWelfareConcern))

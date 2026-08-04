@@ -17,12 +17,19 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([arr], filename, { type: mime })
 }
 
+interface NewCatPhoto {
+  catName: string
+  dataUrl: string
+}
+
 export default function ReportPage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
   const { activeRound, clearRound } = useFeedingRoundStore()
   const [reportText, setReportText] = useState('')
   const [shared, setShared] = useState(false)
+  const [photoShared, setPhotoShared] = useState(false)
+  const [newCatPhotos, setNewCatPhotos] = useState<NewCatPhoto[]>([])
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
 
@@ -43,6 +50,7 @@ export default function ReportPage() {
     if (!route) return
 
     const areaMap = new Map<string, { name: string; hasWelfareConcern: boolean; welfareNotes: string }[]>()
+    const photos: NewCatPhoto[] = []
 
     for (const rs of route.route_stations) {
       const station = rs.station
@@ -52,17 +60,19 @@ export default function ReportPage() {
       for (const catId of stationState.seenCatIds) {
         const cat = seenCats.find(c => c.id === catId)
         if (!cat) continue
-        const area = station.area
-        if (!areaMap.has(area)) areaMap.set(area, [])
+        if (!areaMap.has(station.area)) areaMap.set(station.area, [])
         const welfareNotes = stationState.welfare[catId] ?? ''
-        areaMap.get(area)!.push({ name: cat.name, hasWelfareConcern: !!welfareNotes, welfareNotes })
+        areaMap.get(station.area)!.push({ name: cat.name, hasWelfareConcern: !!welfareNotes, welfareNotes })
       }
 
       for (const cat of stationState.additionalCats ?? []) {
         if (!areaMap.has(station.area)) areaMap.set(station.area, [])
         areaMap.get(station.area)!.push({ name: cat.name, hasWelfareConcern: false, welfareNotes: '' })
+        if (cat.photoDataUrl) photos.push({ catName: cat.name, dataUrl: cat.photoDataUrl })
       }
     }
+
+    setNewCatPhotos(photos)
 
     const stationEntries = route.route_stations.map(rs => {
       const state = activeRound.stationStates[rs.station.id]
@@ -74,14 +84,15 @@ export default function ReportPage() {
       }
     })
 
-    const generalNotes = [
-      activeRound.notes,
-      ...Object.values(activeRound.stationStates).map(s => s.notes).filter(Boolean),
-    ].filter(Boolean).join('\n')
+    const stationNotes = route.route_stations.flatMap(rs => {
+      const note = activeRound.stationStates[rs.station.id]?.notes?.trim()
+      return note ? [{ stationName: rs.station.name, note }] : []
+    })
 
     const text = generateReport({
       areas: [...areaMap.entries()].map(([area, cats]) => ({ area, cats })),
-      generalNotes,
+      roundNotes: activeRound.notes?.trim() ?? '',
+      stationNotes,
       roundType: route.round_type,
       startedAt: activeRound.startedAt,
       completedAt: activeRound.completedAt,
@@ -92,29 +103,9 @@ export default function ReportPage() {
   }, [activeRound, routes, seenCats])
 
   async function handleShare() {
-    // Collect photos from new cats seen during this round
-    const photoFiles: File[] = []
-    if (activeRound) {
-      let photoIndex = 0
-      for (const state of Object.values(activeRound.stationStates)) {
-        for (const cat of state.additionalCats ?? []) {
-          if (cat.photoDataUrl) {
-            photoFiles.push(dataUrlToFile(cat.photoDataUrl, `new-cat-${++photoIndex}.jpg`))
-          }
-        }
-      }
-    }
-
     try {
       if (navigator.share) {
-        const shareData: ShareData = { text: reportText, title: 'Cat Feeding Report' }
-        if (photoFiles.length > 0) shareData.files = photoFiles
-        try {
-          await navigator.share(shareData)
-        } catch {
-          // Files not supported — retry without them
-          await navigator.share({ text: reportText, title: 'Cat Feeding Report' })
-        }
+        await navigator.share({ text: reportText, title: 'Cat Feeding Report' })
       } else {
         await navigator.clipboard.writeText(reportText)
       }
@@ -127,16 +118,24 @@ export default function ReportPage() {
     }
   }
 
+  async function handleSharePhotos() {
+    const files = newCatPhotos.map((p, i) =>
+      dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`)
+    )
+    try {
+      await navigator.share({ files, title: 'New cats seen today' })
+      setPhotoShared(true)
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        setPhotoShared(true)
+      }
+    }
+  }
+
   function handleDone() {
     clearRound()
     router.push('/home')
   }
-
-  const photoCount = activeRound
-    ? Object.values(activeRound.stationStates)
-        .flatMap(s => s.additionalCats ?? [])
-        .filter(c => c.photoDataUrl).length
-    : 0
 
   return (
     <div className="max-w-lg mx-auto p-4 pt-6 pb-8">
@@ -150,10 +149,30 @@ export default function ReportPage() {
         style={{ minHeight: '340px' }}
       />
 
-      {photoCount > 0 && (
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          📷 {photoCount} new cat photo{photoCount !== 1 ? 's' : ''} will be attached when sharing
-        </p>
+      {newCatPhotos.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            New cat photos
+          </p>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {newCatPhotos.map((p, i) => (
+              <div key={i} className="relative">
+                <img
+                  src={p.dataUrl}
+                  alt={p.catName}
+                  className="w-20 h-20 rounded-xl object-cover border border-border"
+                />
+                <p className="text-xs text-muted-foreground mt-1 max-w-[80px] truncate">{p.catName}</p>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={handleSharePhotos}
+            className="w-full h-12 rounded-2xl border border-border text-foreground font-medium text-sm active:scale-[0.98] transition-transform"
+          >
+            {photoShared ? '✓ Photos shared' : `📷 Share ${newCatPhotos.length} photo${newCatPhotos.length !== 1 ? 's' : ''}`}
+          </button>
+        </div>
       )}
 
       <div className="mt-4 space-y-3">
