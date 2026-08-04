@@ -7,6 +7,11 @@ export async function fetchCatsByStation(stationId: string) {
     .select('id, name, photo_url, description, status, health_notes')
     .eq('primary_station_id', stationId)
     .eq('is_active', true)
+    // Cats added mid-round by a volunteer stay provisional and invisible to other
+    // volunteers — the admin adds them properly (with a real name) on their own system,
+    // outside this app. Without this filter, whatever free text was typed into
+    // "Describe the cat…" would show up as a permanent name for every volunteer.
+    .eq('is_provisional', false)
     .order('name')
 
   if (error) throw error
@@ -31,6 +36,9 @@ export async function fetchAllCats() {
     .from('cats')
     .select('id, name, photo_url, description, status, primary_station_id')
     .eq('is_active', true)
+    // Same reasoning as fetchCatsByStation — a provisional cat shouldn't be pickable as a
+    // "seen at this station too" guest cat either.
+    .eq('is_provisional', false)
     .order('name')
   if (error) throw error
   return data ?? []
