@@ -44,7 +44,8 @@ export default function ReportPage() {
   })
 
   useEffect(() => {
-    if (!activeRound || !routes || !seenCats) return
+    if (!activeRound || !routes) return
+    if (allSeenCatIds.length > 0 && !seenCats) return
 
     const route = routes.find(r => r.id === activeRound.routeId)
     if (!route) return
@@ -58,7 +59,7 @@ export default function ReportPage() {
       if (!stationState) continue
 
       for (const catId of stationState.seenCatIds) {
-        const cat = seenCats.find(c => c.id === catId)
+        const cat = seenCats?.find(c => c.id === catId)
         if (!cat) continue
         if (!areaMap.has(station.area)) areaMap.set(station.area, [])
         const welfareNotes = stationState.welfare[catId] ?? ''
