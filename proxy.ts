@@ -4,6 +4,14 @@ import { createServerClient } from '@supabase/ssr'
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request })
+  const { pathname } = request.nextUrl
+
+  // Public routes — always accessible, no Supabase client needed
+  if (pathname.startsWith('/signin')) return response
+  if (pathname.startsWith('/auth/callback')) return response
+
+  // Dev bypass — skip auth when SKIP_AUTH=true in .env.local (never set in production)
+  if (process.env.SKIP_AUTH === 'true') return response
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,15 +26,6 @@ export async function proxy(request: NextRequest) {
       },
     }
   )
-
-  const { pathname } = request.nextUrl
-
-  // Public routes — always accessible
-  if (pathname.startsWith('/signin')) return response
-  if (pathname.startsWith('/auth/callback')) return response
-
-  // Dev bypass — skip auth when SKIP_AUTH=true in .env.local (never set in production)
-  if (process.env.SKIP_AUTH === 'true') return response
 
   const { data: { user } } = await supabase.auth.getUser()
 
