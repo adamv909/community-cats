@@ -8,6 +8,15 @@ import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
 import { fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { generateReport } from '@/lib/report/generator'
 
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, data] = dataUrl.split(',')
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
+  const bytes = atob(data)
+  const arr = new Uint8Array(bytes.length)
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+  return new File([arr], filename, { type: mime })
+}
+
 export default function ReportPage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
@@ -17,7 +26,6 @@ export default function ReportPage() {
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
 
-  // Collect all seen cat IDs across all stations
   const allSeenCatIds = activeRound
     ? [...new Set(Object.values(activeRound.stationStates).flatMap(s => s.seenCatIds))]
     : []
@@ -34,7 +42,6 @@ export default function ReportPage() {
     const route = routes.find(r => r.id === activeRound.routeId)
     if (!route) return
 
-    // Build area → cats map from sightings
     const areaMap = new Map<string, { name: string; hasWelfareConcern: boolean; welfareNotes: string }[]>()
 
     for (const rs of route.route_stations) {
@@ -48,54 +55,72 @@ export default function ReportPage() {
         const area = station.area
         if (!areaMap.has(area)) areaMap.set(area, [])
         const welfareNotes = stationState.welfare[catId] ?? ''
-        areaMap.get(area)!.push({
-          name: cat.name,
-          hasWelfareConcern: !!welfareNotes,
-          welfareNotes,
-        })
+        areaMap.get(area)!.push({ name: cat.name, hasWelfareConcern: !!welfareNotes, welfareNotes })
       }
 
       for (const cat of stationState.additionalCats ?? []) {
-        const area = station.area
-        if (!areaMap.has(area)) areaMap.set(area, [])
-        areaMap.get(area)!.push({ name: cat.name, hasWelfareConcern: false, welfareNotes: '' })
+        if (!areaMap.has(station.area)) areaMap.set(station.area, [])
+        areaMap.get(station.area)!.push({ name: cat.name, hasWelfareConcern: false, welfareNotes: '' })
       }
     }
 
-    const stationStates = Object.values(activeRound.stationStates)
-    const allFood = stationStates.every(s => s.foodToppedUp)
-    const allWater = stationStates.every(s => s.waterToppedUp)
+    const stationEntries = route.route_stations.map(rs => {
+      const state = activeRound.stationStates[rs.station.id]
+      return {
+        name: rs.station.name,
+        foodLevel: state?.foodLevel ?? null,
+        foodToppedUp: state?.foodToppedUp ?? false,
+        waterToppedUp: state?.waterToppedUp ?? false,
+      }
+    })
+
     const generalNotes = [
       activeRound.notes,
-      ...stationStates.map(s => s.notes).filter(Boolean),
+      ...Object.values(activeRound.stationStates).map(s => s.notes).filter(Boolean),
     ].filter(Boolean).join('\n')
-
-    const stationFoodLevels = route.route_stations.map(rs => ({
-      name: rs.station.name,
-      foodLevel: (activeRound.stationStates[rs.station.id]?.foodLevel) ?? null,
-    }))
 
     const text = generateReport({
       areas: [...areaMap.entries()].map(([area, cats]) => ({ area, cats })),
       generalNotes,
-      allFoodToppedUp: allFood,
-      allWaterToppedUp: allWater,
       roundType: route.round_type,
       startedAt: activeRound.startedAt,
       completedAt: activeRound.completedAt,
-      stationFoodLevels,
+      stationEntries,
     })
 
     setReportText(text)
   }, [activeRound, routes, seenCats])
 
   async function handleShare() {
-    if (navigator.share) {
-      await navigator.share({ text: reportText, title: 'Cat Feeding Report' })
+    // Collect photos from new cats seen during this round
+    const photoFiles: File[] = []
+    if (activeRound) {
+      let photoIndex = 0
+      for (const state of Object.values(activeRound.stationStates)) {
+        for (const cat of state.additionalCats ?? []) {
+          if (cat.photoDataUrl) {
+            photoFiles.push(dataUrlToFile(cat.photoDataUrl, `new-cat-${++photoIndex}.jpg`))
+          }
+        }
+      }
+    }
+
+    try {
+      if (navigator.share) {
+        const shareData: ShareData = { text: reportText, title: 'Cat Feeding Report' }
+        if (photoFiles.length > 0 && navigator.canShare?.({ files: photoFiles })) {
+          shareData.files = photoFiles
+        }
+        await navigator.share(shareData)
+      } else {
+        await navigator.clipboard.writeText(reportText)
+      }
       setShared(true)
-    } else {
-      await navigator.clipboard.writeText(reportText)
-      setShared(true)
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        await navigator.clipboard.writeText(reportText).catch(() => {})
+        setShared(true)
+      }
     }
   }
 
@@ -103,6 +128,12 @@ export default function ReportPage() {
     clearRound()
     router.push('/home')
   }
+
+  const photoCount = activeRound
+    ? Object.values(activeRound.stationStates)
+        .flatMap(s => s.additionalCats ?? [])
+        .filter(c => c.photoDataUrl).length
+    : 0
 
   return (
     <div className="max-w-lg mx-auto p-4 pt-6 pb-8">
@@ -115,6 +146,12 @@ export default function ReportPage() {
         className="w-full rounded-2xl border border-border bg-card px-4 py-4 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
         style={{ minHeight: '340px' }}
       />
+
+      {photoCount > 0 && (
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          📷 {photoCount} new cat photo{photoCount !== 1 ? 's' : ''} will be attached when sharing
+        </p>
+      )}
 
       <div className="mt-4 space-y-3">
         <button

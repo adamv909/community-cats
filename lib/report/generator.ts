@@ -9,20 +9,20 @@ interface AreaEntry {
   cats: CatEntry[]
 }
 
-interface StationFoodEntry {
+export interface StationFoodEntry {
   name: string
   foodLevel: 'empty' | 'medium' | 'full' | null
+  foodToppedUp: boolean
+  waterToppedUp: boolean
 }
 
 export interface ReportInput {
   areas: AreaEntry[]
   generalNotes: string
-  allFoodToppedUp: boolean
-  allWaterToppedUp: boolean
   roundType: 'morning' | 'evening'
   startedAt: string
   completedAt: string | null
-  stationFoodLevels?: StationFoodEntry[]
+  stationEntries: StationFoodEntry[]
 }
 
 export function generateReport(input: ReportInput): string {
@@ -55,34 +55,47 @@ export function generateReport(input: ReportInput): string {
 
   lines.push('General')
 
-  if (input.roundType === 'morning' && input.stationFoodLevels?.length) {
-    const empty = input.stationFoodLevels.filter(s => s.foodLevel === 'empty')
-    const medium = input.stationFoodLevels.filter(s => s.foodLevel === 'medium')
-    const full = input.stationFoodLevels.filter(s => s.foodLevel === 'full')
+  const { stationEntries, roundType } = input
 
-    if (empty.length > 0) {
-      lines.push(`⚠️ Empty on arrival: ${empty.map(s => s.name).join(', ')}`)
+  if (roundType === 'morning' && stationEntries.length) {
+    // Food levels on arrival
+    const empty = stationEntries.filter(s => s.foodLevel === 'empty')
+    const medium = stationEntries.filter(s => s.foodLevel === 'medium')
+    const full = stationEntries.filter(s => s.foodLevel === 'full')
+
+    if (empty.length > 0) lines.push(`⚠️ Empty on arrival: ${empty.map(s => s.name).join(', ')}`)
+    if (medium.length > 0) lines.push(`Medium on arrival: ${medium.map(s => s.name).join(', ')}`)
+    if (full.length > 0) lines.push(`Full on arrival: ${full.map(s => s.name).join(', ')}`)
+
+    // Outstanding (needed topping up but wasn't done)
+    const needsAttention = (s: StationFoodEntry) => s.foodLevel === 'empty' || s.foodLevel === 'medium'
+    const foodOutstanding = stationEntries.filter(s => needsAttention(s) && !s.foodToppedUp)
+    const waterOutstanding = stationEntries.filter(s => needsAttention(s) && !s.waterToppedUp)
+
+    if (foodOutstanding.length > 0) {
+      lines.push(`⚠️ Dry food not topped up: ${foodOutstanding.map(s => s.name).join(', ')}`)
     }
-    if (medium.length > 0) {
-      lines.push(`Medium on arrival: ${medium.map(s => s.name).join(', ')}`)
+    if (waterOutstanding.length > 0) {
+      lines.push(`⚠️ Water not topped up: ${waterOutstanding.map(s => s.name).join(', ')}`)
     }
-    if (full.length > 0) {
-      lines.push(`Full on arrival: ${full.map(s => s.name).join(', ')}`)
-    }
-    if (input.allFoodToppedUp && input.allWaterToppedUp) {
+
+    if (foodOutstanding.length === 0 && waterOutstanding.length === 0) {
       lines.push('All stations topped up with dry food and water.')
-    } else if (input.allFoodToppedUp) {
-      lines.push('All stations topped up with dry food.')
-    } else if (input.allWaterToppedUp) {
-      lines.push('All stations topped up with water.')
     }
   } else {
-    if (input.allFoodToppedUp && input.allWaterToppedUp) {
+    // Evening round — topped up is binary
+    const foodOutstanding = stationEntries.filter(s => !s.foodToppedUp)
+    const waterOutstanding = stationEntries.filter(s => !s.waterToppedUp)
+
+    if (foodOutstanding.length > 0) {
+      lines.push(`⚠️ ${foodType.charAt(0).toUpperCase() + foodType.slice(1)} not topped up: ${foodOutstanding.map(s => s.name).join(', ')}`)
+    }
+    if (waterOutstanding.length > 0) {
+      lines.push(`⚠️ Water not topped up: ${waterOutstanding.map(s => s.name).join(', ')}`)
+    }
+
+    if (foodOutstanding.length === 0 && waterOutstanding.length === 0) {
       lines.push(`All stations topped up with ${foodType} and water.`)
-    } else if (input.allFoodToppedUp) {
-      lines.push(`All stations topped up with ${foodType}.`)
-    } else if (input.allWaterToppedUp) {
-      lines.push('All stations topped up with water.')
     }
   }
 
