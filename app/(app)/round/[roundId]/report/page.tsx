@@ -81,6 +81,7 @@ export default function ReportPage() {
       allFoodToppedUp: allFood,
       allWaterToppedUp: allWater,
       roundType: route.round_type,
+      startedAt: activeRound.startedAt,
       completedAt: activeRound.completedAt,
       stationFoodLevels,
     })

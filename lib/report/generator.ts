@@ -20,6 +20,7 @@ export interface ReportInput {
   allFoodToppedUp: boolean
   allWaterToppedUp: boolean
   roundType: 'morning' | 'evening'
+  startedAt: string
   completedAt: string | null
   stationFoodLevels?: StationFoodEntry[]
 }
@@ -31,14 +32,16 @@ export function generateReport(input: ReportInput): string {
   const roundLabel = input.roundType === 'morning' ? 'Morning Round' : 'Evening Round'
   const foodType = input.roundType === 'morning' ? 'dry food' : 'wet food'
 
-  const completedTime = input.completedAt
-    ? new Date(input.completedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-    : null
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+  const startTime = fmt(input.startedAt)
+  const completedTime = input.completedAt ? fmt(input.completedAt) : null
 
   const lines: string[] = [
     `🐱 Cat Feeding Report – ${roundLabel} – ${date}`,
-    completedTime ? `Completed at ${completedTime}` : '',
-  ].filter(Boolean)
+    completedTime ? `${startTime} – ${completedTime}` : `Started ${startTime}`,
+  ]
   lines.push('')
 
   for (const area of input.areas) {
