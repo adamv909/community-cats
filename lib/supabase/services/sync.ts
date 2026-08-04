@@ -74,14 +74,22 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
     // New cats described (and optionally photographed) by the volunteer, with no prior
     // DB record — create a provisional cat, then a sighting against it.
     for (const cat of state.additionalCats ?? []) {
+      // Rounds started before the client-generated `id` and IndexedDB `photoKey` fields
+      // existed may still have the old shape on disk: no id, and the photo stored inline as
+      // `photoDataUrl`. Fall back so an in-progress round from before the update still syncs.
+      const legacyDataUrl = (cat as { photoDataUrl?: string }).photoDataUrl
+      const catId = cat.id ?? uuidv5(`legacy-cat:${state.visitId}:${cat.name}`, SIGHTING_NAMESPACE)
+
       let photoUrl: string | null = null
       if (cat.photoKey) {
         const dataUrl = await getPhoto(cat.photoKey)
         if (dataUrl) photoUrl = await uploadCatPhoto(dataUrl, cat.photoKey)
+      } else if (legacyDataUrl) {
+        photoUrl = await uploadCatPhoto(legacyDataUrl, catId)
       }
 
       await insertProvisionalCat({
-        id: cat.id,
+        id: catId,
         name: cat.name,
         description: null,
         primaryStationId: stationId,
@@ -91,9 +99,9 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
 
       const welfareNotes = cat.welfareNotes ?? null
       const { error: sightingErr } = await supabase.from('sightings').upsert({
-        id: sightingId(state.visitId, cat.id),
+        id: sightingId(state.visitId, catId),
         station_visit_id: state.visitId,
-        cat_id: cat.id,
+        cat_id: catId,
         station_id: stationId,
         volunteer_id: round.volunteerId,
         seen_at: state.visitedAt,

@@ -25,6 +25,11 @@ interface NewCatPhoto {
   photoKey: string
 }
 
+// Rounds started before the IndexedDB rewrite stored the photo directly as a data URL on
+// the cat record. Old localStorage data with that shape can still be sitting on a device —
+// fall back to it so in-progress rounds from before the update don't silently lose photos.
+type LegacyAdditionalCat = { photoDataUrl?: string }
+
 export default function ReportPage() {
   const { roundId } = useParams() as { roundId: string }
   const router = useRouter()
@@ -48,15 +53,16 @@ export default function ReportPage() {
     enabled: allSeenCatIds.length > 0,
   })
 
-  // additionalCats only carry a photoKey (IndexedDB reference) — resolve to data URLs for display/share
+  // additionalCats normally carry a photoKey (IndexedDB reference) — resolve to data URLs
+  // for display/share. Cats from a pre-rewrite round may only have a legacy photoDataUrl.
   const additionalCatsWithPhotos = useMemo(() => {
     if (!activeRound) return []
     return Object.values(activeRound.stationStates).flatMap(s =>
-      (s.additionalCats ?? []).filter(c => c.photoKey)
+      (s.additionalCats ?? []).filter(c => c.photoKey || (c as LegacyAdditionalCat).photoDataUrl)
     )
   }, [activeRound])
   const photoKeys = useMemo(
-    () => additionalCatsWithPhotos.map(c => c.photoKey!).sort(),
+    () => additionalCatsWithPhotos.filter(c => c.photoKey).map(c => c.photoKey!).sort(),
     [additionalCatsWithPhotos]
   )
 
@@ -71,8 +77,11 @@ export default function ReportPage() {
   }, [photoKeys.join(',')])
 
   const newCatPhotos: NewCatPhoto[] = additionalCatsWithPhotos
-    .filter(c => photoMap[c.photoKey!])
-    .map(c => ({ catName: c.name, dataUrl: photoMap[c.photoKey!], photoKey: c.photoKey! }))
+    .map(c => {
+      const dataUrl = c.photoKey ? photoMap[c.photoKey] : (c as LegacyAdditionalCat).photoDataUrl
+      return dataUrl ? { catName: c.name, dataUrl, photoKey: c.photoKey ?? c.id } : null
+    })
+    .filter((p): p is NewCatPhoto => p !== null)
 
   useEffect(() => {
     if (!activeRound || !routes) return

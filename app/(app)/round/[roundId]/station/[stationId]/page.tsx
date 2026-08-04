@@ -335,7 +335,10 @@ export default function StationChecklistPage() {
           {additionalCats.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
               {additionalCats.map((cat, i) => {
-                const photoUrl = cat.photoKey ? photoMap[cat.photoKey] : undefined
+                // Rounds from before the IndexedDB rewrite may still carry the photo inline
+                // as photoDataUrl instead of a photoKey — fall back so it still displays.
+                const legacyUrl = (cat as { photoDataUrl?: string }).photoDataUrl
+                const photoUrl = cat.photoKey ? photoMap[cat.photoKey] : legacyUrl
                 const hasConcern = !!cat.welfareNotes
                 return (
                   <div
