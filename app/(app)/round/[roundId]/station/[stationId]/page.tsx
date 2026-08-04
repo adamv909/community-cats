@@ -21,6 +21,8 @@ export default function StationChecklistPage() {
   const [showGuestModal, setShowGuestModal] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatPhoto, setNewCatPhoto] = useState<string | undefined>(undefined)
+  const [addCatError, setAddCatError] = useState<string | null>(null)
+  const [completionError, setCompletionError] = useState<string | null>(null)
   const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
   const addCatInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -101,6 +103,11 @@ export default function StationChecklistPage() {
   const welfareAdditionalCat = welfareAdditionalCatIndex !== null ? additionalCats[welfareAdditionalCatIndex] : null
 
   function handleCompleteStation() {
+    if (route?.round_type === 'morning' && stationState!.foodLevel === null) {
+      setCompletionError('Select the dry food level on arrival before continuing.')
+      return
+    }
+    setCompletionError(null)
     completeStation(stationId)
     if (isLastStation) {
       router.push(`/round/${roundId}/complete`)
@@ -118,8 +125,11 @@ export default function StationChecklistPage() {
 
   async function handleAddCat() {
     const name = newCatName.trim()
-    if (!name) { setShowAddCat(false); return }
-    const photoKey = newCatPhoto ? await savePhoto(newCatPhoto) : undefined
+    if (!name && !newCatPhoto) { setShowAddCat(false); return }
+    if (!name) { setAddCatError('Add a name or short description for this cat.'); return }
+    if (!newCatPhoto) { setAddCatError('Take a photo of this cat before adding it.'); return }
+    setAddCatError(null)
+    const photoKey = await savePhoto(newCatPhoto)
     addAdditionalCat(stationId, { name, photoKey })
     setNewCatName('')
     setNewCatPhoto(undefined)
@@ -196,7 +206,9 @@ export default function StationChecklistPage() {
             <>
               {/* Arrival food level */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">🍽️ Dry food on arrival</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  🍽️ Dry food on arrival <span className="text-red-500 normal-case">· required</span>
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   {(['empty', 'medium', 'full'] as const).map(level => {
                     const selected = stationState.foodLevel === level
@@ -208,7 +220,7 @@ export default function StationChecklistPage() {
                     return (
                       <button
                         key={level}
-                        onClick={() => setFoodLevel(stationId, selected ? null : level)}
+                        onClick={() => { setFoodLevel(stationId, selected ? null : level); setCompletionError(null) }}
                         className={`h-12 rounded-xl border-2 font-semibold text-sm capitalize transition-all active:scale-95 ${
                           selected ? colour : 'border-border bg-card text-muted-foreground'
                         }`}
@@ -394,19 +406,21 @@ export default function StationChecklistPage() {
                 <input
                   ref={addCatInputRef}
                   value={newCatName}
-                  onChange={e => setNewCatName(e.target.value)}
+                  onChange={e => { setNewCatName(e.target.value); setAddCatError(null) }}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && newCatName.trim()) handleAddCat()
-                    if (e.key === 'Escape') { setNewCatName(''); setNewCatPhoto(undefined); setShowAddCat(false) }
+                    if (e.key === 'Enter') handleAddCat()
+                    if (e.key === 'Escape') { setNewCatName(''); setNewCatPhoto(undefined); setAddCatError(null); setShowAddCat(false) }
                   }}
-                  placeholder="Describe the cat…"
+                  placeholder="Name or short description…"
                   autoFocus
                   className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 {/* Camera button */}
                 <button
                   onClick={() => photoInputRef.current?.click()}
-                  className="w-10 h-10 rounded-xl border border-border bg-card flex items-center justify-center text-lg flex-shrink-0"
+                  className={`w-10 h-10 rounded-xl border flex items-center justify-center text-lg flex-shrink-0 ${
+                    !newCatPhoto && addCatError ? 'border-destructive' : 'border-border'
+                  } bg-card`}
                   aria-label="Take photo"
                 >
                   📷
@@ -418,6 +432,10 @@ export default function StationChecklistPage() {
                   Add
                 </button>
               </div>
+              {addCatError && (
+                <p className="text-xs text-destructive">{addCatError}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Both a name and a photo are required.</p>
               {/* Hidden file input */}
               <input
                 ref={photoInputRef}
@@ -440,6 +458,7 @@ export default function StationChecklistPage() {
                     canvas.height = Math.round(img.height * scale)
                     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
                     setNewCatPhoto(canvas.toDataURL('image/jpeg', 0.75))
+                    setAddCatError(null)
                   }
                   img.src = url
                 }}
@@ -468,6 +487,9 @@ export default function StationChecklistPage() {
         </div>
 
         {/* Complete */}
+        {completionError && (
+          <p className="text-sm text-destructive text-center -mb-2">{completionError}</p>
+        )}
         <button
           onClick={handleCompleteStation}
           className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
