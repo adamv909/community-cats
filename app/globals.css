@@ -4,6 +4,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Used by BottomNav to clear the home-indicator area on notched phones. Tailwind v4 has no
+   built-in safe-area utility and silently drops unknown class names, so without this the
+   class name existed but did nothing — the nav sat flush against the bottom edge. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

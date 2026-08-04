@@ -26,6 +26,18 @@ export default function StationChecklistPage() {
   const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
   const addCatInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const addCatErrorRef = useRef<HTMLParagraphElement>(null)
+  const completionErrorRef = useRef<HTMLParagraphElement>(null)
+
+  // The bottom nav is fixed and can cover the tail end of the page — scroll error text into
+  // the vertical center of the viewport rather than relying on it merely being in-flow above
+  // the nav, since that clearance has been wrong before (see the pb-safe fix in globals.css).
+  useEffect(() => {
+    if (addCatError) addCatErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [addCatError])
+  useEffect(() => {
+    if (completionError) completionErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [completionError])
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
   const { data: cats, isLoading: catsLoading } = useQuery({
@@ -174,7 +186,7 @@ export default function StationChecklistPage() {
   const totalSeen = stationState.seenCatIds.length + additionalCats.length
 
   return (
-    <div className="max-w-lg mx-auto pb-8">
+    <div className="max-w-lg mx-auto pb-16">
       {/* Header */}
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 pt-4 pb-3">
         <div className="flex items-start justify-between gap-2">
@@ -433,7 +445,7 @@ export default function StationChecklistPage() {
                 </button>
               </div>
               {addCatError && (
-                <p className="text-xs text-destructive">{addCatError}</p>
+                <p ref={addCatErrorRef} className="text-xs text-destructive">{addCatError}</p>
               )}
               <p className="text-xs text-muted-foreground">Both a name and a photo are required.</p>
               {/* Hidden file input */}
@@ -488,7 +500,7 @@ export default function StationChecklistPage() {
 
         {/* Complete */}
         {completionError && (
-          <p className="text-sm text-destructive text-center -mb-2">{completionError}</p>
+          <p ref={completionErrorRef} className="text-sm text-destructive text-center">{completionError}</p>
         )}
         <button
           onClick={handleCompleteStation}
