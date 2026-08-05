@@ -1,12 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { fetchActiveRoutes, type RouteStation } from '@/lib/supabase/services/routes'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { usePreferencesStore } from '@/store/preferences-store'
 import { createClient } from '@/lib/supabase/client'
+
+// Routes come back sorted alphabetically by name (Evening before Morning) — reorder to
+// chronological (Morning before Evening) for display instead.
+const ROUND_TYPE_ORDER: Record<string, number> = { morning: 0, evening: 1 }
 
 export default function HomePage() {
   const router = useRouter()
@@ -16,6 +20,12 @@ export default function HomePage() {
     queryKey: ['routes'],
     queryFn: fetchActiveRoutes,
   })
+  const orderedRoutes = useMemo(
+    () => routes ? [...routes].sort((a, b) =>
+      (ROUND_TYPE_ORDER[a.round_type] ?? 99) - (ROUND_TYPE_ORDER[b.round_type] ?? 99)
+    ) : [],
+    [routes]
+  )
   const { activeRound, clearRound } = useFeedingRoundStore()
   const { getStationOrder } = usePreferencesStore()
 
@@ -125,7 +135,7 @@ export default function HomePage() {
       )}
 
       <div className="space-y-3">
-        {routes?.map(route => {
+        {orderedRoutes.map(route => {
           const stationCount = route.route_stations.length
           return (
             <button
@@ -150,7 +160,7 @@ export default function HomePage() {
         })}
       </div>
 
-      {routes?.length === 0 && !isLoading && (
+      {orderedRoutes.length === 0 && !isLoading && (
         <div className="text-center py-12">
           <p className="text-4xl mb-3">🗺️</p>
           <p className="text-muted-foreground text-sm">No active routes found.</p>
