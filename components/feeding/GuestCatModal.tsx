@@ -84,19 +84,27 @@ export function GuestCatModal({ excludeCatIds, selectedCatIds, onAdd, onRemove, 
                     : 'border-border bg-card'
                 }`}
               >
-                <div
-                  className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
-                  style={{ background: palette.bg }}
-                >
-                  <svg viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
-                    <polygon points="8,16 14,6 20,14" fill={palette.fg} opacity="0.9" />
-                    <polygon points="32,16 26,6 20,14" fill={palette.fg} opacity="0.9" />
-                    <ellipse cx="20" cy="24" rx="13" ry="11" fill={palette.fg} />
-                    <circle cx="15" cy="23" r="2.2" fill={palette.bg} />
-                    <circle cx="25" cy="23" r="2.2" fill={palette.bg} />
-                    <ellipse cx="20" cy="27" rx="1.5" ry="1" fill={palette.bg} opacity="0.7" />
-                  </svg>
-                </div>
+                {cat.photo_url ? (
+                  <img
+                    src={cat.photo_url}
+                    alt={cat.name}
+                    className="w-10 h-10 rounded-xl flex-shrink-0 object-cover"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
+                    style={{ background: palette.bg }}
+                  >
+                    <svg viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+                      <polygon points="8,16 14,6 20,14" fill={palette.fg} opacity="0.9" />
+                      <polygon points="32,16 26,6 20,14" fill={palette.fg} opacity="0.9" />
+                      <ellipse cx="20" cy="24" rx="13" ry="11" fill={palette.fg} />
+                      <circle cx="15" cy="23" r="2.2" fill={palette.bg} />
+                      <circle cx="25" cy="23" r="2.2" fill={palette.bg} />
+                      <ellipse cx="20" cy="27" rx="1.5" ry="1" fill={palette.bg} opacity="0.7" />
+                    </svg>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className={`font-semibold text-sm ${selected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
                     {cat.name}
