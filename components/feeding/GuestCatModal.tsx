@@ -65,57 +65,59 @@ export function GuestCatModal({ excludeCatIds, selectedCatIds, onAdd, onRemove, 
           />
         </div>
 
-        {/* Cat list */}
-        <div className="overflow-y-auto px-5 pb-8 space-y-2">
+        {/* Cat grid */}
+        <div className="overflow-y-auto px-5 pb-8">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
           ) : filtered.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">No cats found</div>
-          ) : filtered.map(cat => {
-            const selected = selectedCatIds.includes(cat.id)
-            const palette = placeholderColor(cat.name)
-            return (
-              <button
-                key={cat.id}
-                onClick={() => selected ? onRemove(cat.id) : onAdd(cat.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all active:scale-[0.98] ${
-                  selected
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : 'border-border bg-card'
-                }`}
-              >
-                {cat.photo_url ? (
-                  <img
-                    src={cat.photo_url}
-                    alt={cat.name}
-                    className="w-10 h-10 rounded-xl flex-shrink-0 object-cover"
-                  />
-                ) : (
-                  <div
-                    className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
-                    style={{ background: palette.bg }}
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {filtered.map(cat => {
+                const selected = selectedCatIds.includes(cat.id)
+                const palette = placeholderColor(cat.name)
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => selected ? onRemove(cat.id) : onAdd(cat.id)}
+                    className={`relative flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 text-center transition-all active:scale-[0.98] ${
+                      selected
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : 'border-border bg-card'
+                    }`}
                   >
-                    <svg viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
-                      <polygon points="8,16 14,6 20,14" fill={palette.fg} opacity="0.9" />
-                      <polygon points="32,16 26,6 20,14" fill={palette.fg} opacity="0.9" />
-                      <ellipse cx="20" cy="24" rx="13" ry="11" fill={palette.fg} />
-                      <circle cx="15" cy="23" r="2.2" fill={palette.bg} />
-                      <circle cx="25" cy="23" r="2.2" fill={palette.bg} />
-                      <ellipse cx="20" cy="27" rx="1.5" ry="1" fill={palette.bg} opacity="0.7" />
-                    </svg>
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className={`font-semibold text-sm ${selected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
-                    {cat.name}
-                  </p>
-                </div>
-                {selected && (
-                  <span className="text-emerald-500 text-lg">✓</span>
-                )}
-              </button>
-            )
-          })}
+                    {selected && (
+                      <span className="absolute top-1 right-1 z-10 flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white text-xs">✓</span>
+                    )}
+                    {cat.photo_url ? (
+                      <img
+                        src={cat.photo_url}
+                        alt={cat.name}
+                        className="w-full aspect-square rounded-xl object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="w-full aspect-square rounded-xl flex items-center justify-center"
+                        style={{ background: palette.bg }}
+                      >
+                        <svg viewBox="0 0 40 40" width="60%" height="60%" xmlns="http://www.w3.org/2000/svg">
+                          <polygon points="8,16 14,6 20,14" fill={palette.fg} opacity="0.9" />
+                          <polygon points="32,16 26,6 20,14" fill={palette.fg} opacity="0.9" />
+                          <ellipse cx="20" cy="24" rx="13" ry="11" fill={palette.fg} />
+                          <circle cx="15" cy="23" r="2.2" fill={palette.bg} />
+                          <circle cx="25" cy="23" r="2.2" fill={palette.bg} />
+                          <ellipse cx="20" cy="27" rx="1.5" ry="1" fill={palette.bg} opacity="0.7" />
+                        </svg>
+                      </div>
+                    )}
+                    <p className={`font-semibold text-sm w-full truncate ${selected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                      {cat.name}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
