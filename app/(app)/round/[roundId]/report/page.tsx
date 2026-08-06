@@ -19,6 +19,18 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([arr], filename, { type: mime })
 }
 
+// Shared/downloaded photos previously used generic names ("new-cat-1.jpg") — once a file
+// leaves the app (WhatsApp, Files, etc.) the on-screen name label is gone, so the filename
+// is the only thing left saying which cat is which.
+function catPhotoFilenames(photos: { catName: string }[]): string[] {
+  const seen: Record<string, number> = {}
+  return photos.map(p => {
+    const base = p.catName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'new-cat'
+    const count = (seen[base] = (seen[base] ?? 0) + 1)
+    return count > 1 ? `${base}-${count}.jpg` : `${base}.jpg`
+  })
+}
+
 interface NewCatPhoto {
   catName: string
   dataUrl: string
@@ -178,7 +190,8 @@ export default function ReportPage() {
 
   async function handleSharePhotos() {
     setPhotoShareError(false)
-    const files = newCatPhotos.map((p, i) => dataUrlToFile(p.dataUrl, `new-cat-${i + 1}.jpg`))
+    const filenames = catPhotoFilenames(newCatPhotos)
+    const files = newCatPhotos.map((p, i) => dataUrlToFile(p.dataUrl, filenames[i]))
     const canUseWebShare = !!navigator.share && (!navigator.canShare || navigator.canShare({ files }))
 
     if (!canUseWebShare) {
