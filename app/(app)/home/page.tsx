@@ -137,6 +137,7 @@ export default function HomePage() {
       <div className="space-y-3">
         {orderedRoutes.map(route => {
           const stationCount = route.route_stations.length
+          const stopLabel = route.round_type === 'evening' ? 'stop' : 'station'
           return (
             <button
               key={route.id}
@@ -150,7 +151,7 @@ export default function HomePage() {
                     <p className="text-sm text-muted-foreground mt-0.5 truncate">{route.description}</p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    {stationCount} station{stationCount !== 1 ? 's' : ''}
+                    {stationCount} {stopLabel}{stationCount !== 1 ? 's' : ''}
                   </p>
                 </div>
                 <span className="text-muted-foreground mt-0.5">›</span>

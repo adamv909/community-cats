@@ -24,6 +24,7 @@ export interface Station {
   longitude: number
   accessNotes: string | null
   isActive: boolean
+  kind: 'station' | 'stop'
   createdAt: string
   updatedAt: string
 }
@@ -37,6 +38,9 @@ export interface Cat {
   primaryStationId: string | null
   status: CatStatus
   healthNotes: string | null
+  sex: 'male' | 'female' | null
+  feedingInstructions: string | null
+  safetyNotes: string | null
   lastSeenAt: string | null
   isActive: boolean
   isProvisional: boolean

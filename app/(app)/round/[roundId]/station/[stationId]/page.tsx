@@ -192,7 +192,7 @@ export default function StationChecklistPage() {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-muted-foreground font-medium">
-              {stationInfo?.area} · Station {currentIndex + 1} of {orderedRouteStations.length}
+              {stationInfo?.area} · {route?.round_type === 'evening' ? 'Stop' : 'Station'} {currentIndex + 1} of {orderedRouteStations.length}
             </p>
             <h1 className="font-semibold text-base leading-tight mt-0.5 truncate">
               {stationInfo?.name ?? 'Loading…'}
@@ -506,7 +506,7 @@ export default function StationChecklistPage() {
           onClick={handleCompleteStation}
           className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
         >
-          {isLastStation ? 'Complete round →' : 'Next station →'}
+          {isLastStation ? 'Complete round →' : `Next ${route?.round_type === 'evening' ? 'stop' : 'station'} →`}
         </button>
       </div>
 

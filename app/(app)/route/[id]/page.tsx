@@ -29,6 +29,11 @@ interface RouteStation {
   station: { id: string; name: string; area: string }
 }
 
+function stopWord(roundType: string | undefined, capitalize = false) {
+  const word = roundType === 'evening' ? 'stop' : 'station'
+  return capitalize ? word[0].toUpperCase() + word.slice(1) : word
+}
+
 function SortableStation({
   rs,
   index,
@@ -229,7 +234,9 @@ export default function RouteOverviewPage() {
           <div>
             <h1 className="text-xl font-semibold">{route.name}</h1>
             {route.description && <p className="text-sm text-muted-foreground mt-1">{route.description}</p>}
-            <p className="text-xs text-muted-foreground mt-2">{route.route_stations.length} stations</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              {route.route_stations.length} {stopWord(route.round_type)}{route.route_stations.length !== 1 ? 's' : ''}
+            </p>
           </div>
           {!isEditing && (
             <button
@@ -254,7 +261,7 @@ export default function RouteOverviewPage() {
               </p>
               <p className="text-xs text-muted-foreground">
                 {activeRoundStationsDone > 0
-                  ? `${activeRoundStationsDone} station${activeRoundStationsDone !== 1 ? 's' : ''} already checked off — all sightings, food levels, and notes will be lost. This can't be undone.`
+                  ? `${activeRoundStationsDone} ${stopWord(route.round_type)}${activeRoundStationsDone !== 1 ? 's' : ''} already checked off — all sightings, food levels, and notes will be lost. This can't be undone.`
                   : "All sightings, food levels, and notes so far will be lost. This can't be undone."}
               </p>
               <div className="flex gap-2 pt-1">
@@ -313,7 +320,7 @@ export default function RouteOverviewPage() {
       {/* Edit order header */}
       {isEditing && (
         <div className="px-4 py-3 flex items-center justify-between border-b border-border">
-          <p className="text-sm text-muted-foreground">Drag to reorder stations</p>
+          <p className="text-sm text-muted-foreground">Drag to reorder {stopWord(route.round_type)}s</p>
           <div className="flex items-center gap-3">
             {savedOrder && (
               <button onClick={handleReset} className="text-sm text-muted-foreground">

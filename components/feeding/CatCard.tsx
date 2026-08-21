@@ -18,7 +18,14 @@ function placeholderColor(name: string) {
 }
 
 interface CatCardProps {
-  cat: { id: string; name: string; photo_url: string | null }
+  cat: {
+    id: string
+    name: string
+    photo_url: string | null
+    health_notes?: string | null
+    feeding_instructions?: string | null
+    safety_notes?: string | null
+  }
   seen: boolean
   hasWelfareConcern: boolean
   onToggle: () => void
@@ -98,6 +105,21 @@ export function CatCard({ cat, seen, hasWelfareConcern, onToggle, onWelfareConce
         {cat.name}
       </span>
 
+      {cat.safety_notes && (
+        <span className="mt-0.5 text-[10px] text-red-600 dark:text-red-400 font-medium text-center leading-tight px-1">
+          ⚠️ {cat.safety_notes}
+        </span>
+      )}
+      {cat.feeding_instructions && (
+        <span className="mt-0.5 text-[10px] text-sky-600 dark:text-sky-400 font-medium text-center leading-tight px-1">
+          ℹ️ {cat.feeding_instructions}
+        </span>
+      )}
+      {cat.health_notes && (
+        <span className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium text-center leading-tight px-1">
+          🩹 {cat.health_notes}
+        </span>
+      )}
       {hasWelfareConcern && (
         <span className="text-[10px] text-amber-500 font-semibold uppercase tracking-wide">Concern</span>
       )}

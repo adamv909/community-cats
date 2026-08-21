@@ -7,6 +7,7 @@ export interface StationInfo {
   latitude: number
   longitude: number
   access_notes: string | null
+  kind: 'station' | 'stop'
 }
 
 export interface RouteStation {
@@ -31,7 +32,7 @@ export async function fetchActiveRoutes(): Promise<ActiveRoute[]> {
       id, name, description, round_type,
       route_stations (
         id, order_index,
-        station:stations ( id, name, area, latitude, longitude, access_notes )
+        station:stations ( id, name, area, latitude, longitude, access_notes, kind )
       )
     `)
     .eq('is_active', true)
