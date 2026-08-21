@@ -246,7 +246,7 @@ port = 587
 user = "resend"
 pass = "env(RESEND_API_KEY)"
 admin_email = "noreply@dreamteamjlt.org"
-sender_name = "JLT Community Cats"
+sender_name = "Dream Team JLT"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
