@@ -5,11 +5,12 @@ const CAT_STATION_COLUMNS = 'id, name, photo_url, description, status, health_no
 export async function fetchCatsByStation(stationId: string) {
   const supabase = createClient()
 
-  // A cat's primary_station_id is its morning-round location. The evening round uses
-  // finer-grained "stops" that don't map 1:1 onto morning stations, so a cat can also be
-  // expected at a stop via cat_known_locations without that being its primary station —
-  // e.g. Maple's primary is "Donner Chef" (morning) but she's also known at "Splendor
-  // Fields Station" (evening). Both are checked and merged so neither round misses a cat.
+  // A cat's primary_station_id is its morning-round location (or null if it has none).
+  // The evening round uses finer-grained "stops" that don't map 1:1 onto morning
+  // stations, so a cat can also be expected at a stop via cat_known_locations without
+  // that being its primary station — e.g. Maple's primary is "Tornado" (morning) but
+  // she's also known at "Splendor Fields Station" (evening). Both are checked and
+  // merged so neither round misses a cat.
   const [primaryResult, knownResult] = await Promise.all([
     supabase
       .from('cats')
