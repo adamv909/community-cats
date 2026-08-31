@@ -99,7 +99,9 @@ export function generateReport(input: ReportInput): string {
       lines.push('All stations topped up with dry food and water.')
     }
   } else {
-    // Evening round — topped up is binary
+    // Wet Food Round — food/water topped up is derived from whether any cat was seen in
+    // the cluster, not a separate volunteer action, so there's no "all topped up" comment
+    // to report here (that's already implicit in the cluster cat lists above).
     const foodOutstanding = stationEntries.filter(s => !s.foodToppedUp)
     const waterOutstanding = stationEntries.filter(s => !s.waterToppedUp)
 
@@ -109,15 +111,11 @@ export function generateReport(input: ReportInput): string {
     if (waterOutstanding.length > 0) {
       lines.push(`⚠️ Water not topped up: ${waterOutstanding.map(s => s.name).join(', ')}`)
     }
-
-    if (foodOutstanding.length === 0 && waterOutstanding.length === 0) {
-      lines.push(`All stations topped up with ${foodType} and water.`)
-    }
   }
 
   if (input.stationNotes.length > 0) {
     lines.push('')
-    lines.push('Station notes:')
+    lines.push(roundType === 'morning' ? 'Station notes:' : 'Wet Food Round notes:')
     for (const { stationName, note } of input.stationNotes) {
       lines.push(`• ${stationName}: ${note.trim()}`)
     }
