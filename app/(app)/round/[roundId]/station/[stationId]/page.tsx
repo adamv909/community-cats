@@ -530,7 +530,7 @@ export default function StationChecklistPage() {
           <textarea
             value={stationState.notes}
             onChange={e => setStationNotes(stationId, e.target.value)}
-            placeholder="Any observations about this station…"
+            placeholder="Add your notes here…"
             className="w-full h-20 rounded-xl border border-border bg-card px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>

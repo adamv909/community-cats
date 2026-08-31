@@ -9,7 +9,7 @@ export async function fetchCatsByStation(stationId: string) {
   // The Wet Food Round tracks cats at cluster level via wet_food_cluster_id instead — a
   // separate column, not derived from primary_station_id, so a cat's dry/wet locations
   // can freely differ (e.g. Maple's primary is "Tornado" but her wet_food_cluster_id is
-  // "Q Cluster"). cat_known_locations is the older per-stop mechanism, kept for any
+  // "Cluster Q"). cat_known_locations is the older per-stop mechanism, kept for any
   // historical/legacy station id still referenced elsewhere. All three are checked and
   // merged so no round misses a cat regardless of which mechanism placed them there.
   const [primaryResult, knownResult, clusterResult] = await Promise.all([
