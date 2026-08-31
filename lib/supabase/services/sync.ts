@@ -51,6 +51,7 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
       food_topped_up: state.foodToppedUp,
       food_level: state.foodLevel ?? null,
       water_topped_up: state.waterToppedUp,
+      wet_food_topped_up: state.wetFoodToppedUp ?? false,
       notes: state.notes || null,
     }, { onConflict: 'id', ignoreDuplicates: true })
     if (visitErr) throw visitErr

@@ -131,6 +131,8 @@ export default function ReportPage() {
         foodLevel: state?.foodLevel ?? null,
         foodToppedUp: state?.foodToppedUp ?? false,
         waterToppedUp: state?.waterToppedUp ?? false,
+        requiresWetFood: rs.station.requires_wet_food ?? false,
+        wetFoodToppedUp: state?.wetFoodToppedUp ?? false,
       }
     })
 

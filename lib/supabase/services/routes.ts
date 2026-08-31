@@ -8,6 +8,7 @@ export interface StationInfo {
   longitude: number
   access_notes: string | null
   kind: 'station' | 'stop' | 'cluster'
+  requires_wet_food: boolean
 }
 
 export interface ClusterArea {
@@ -38,7 +39,7 @@ export async function fetchActiveRoutes(): Promise<ActiveRoute[]> {
       id, name, description, round_type,
       route_stations (
         id, order_index,
-        station:stations ( id, name, area, latitude, longitude, access_notes, kind )
+        station:stations ( id, name, area, latitude, longitude, access_notes, kind, requires_wet_food )
       )
     `)
     .eq('is_active', true)

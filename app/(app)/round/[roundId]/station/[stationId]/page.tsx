@@ -46,7 +46,7 @@ export default function StationChecklistPage() {
   })
   const {
     activeRound, hasHydrated, openStation, toggleCatSeen,
-    setFoodToppedUp, setFoodLevel, setWaterToppedUp, setStationNotes,
+    setFoodToppedUp, setFoodLevel, setWaterToppedUp, setWetFoodToppedUp, setStationNotes,
     addAdditionalCat, removeAdditionalCat, setAdditionalCatWelfare,
     addGuestCat, removeGuestCat,
     setWelfareConcern, toggleAreaCovered, completeStation,
@@ -253,7 +253,7 @@ export default function StationChecklistPage() {
               {/* Topped up tiles */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className={`grid gap-2 ${stationInfo?.requires_wet_food ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   <button
                     onClick={() => setFoodToppedUp(stationId, !stationState.foodToppedUp)}
                     className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
@@ -265,6 +265,19 @@ export default function StationChecklistPage() {
                     <span className="text-xl">🍽️</span>
                     <span>Dry food {stationState.foodToppedUp ? '✓' : ''}</span>
                   </button>
+                  {stationInfo?.requires_wet_food && (
+                    <button
+                      onClick={() => setWetFoodToppedUp(stationId, !(stationState.wetFoodToppedUp ?? false))}
+                      className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                        stationState.wetFoodToppedUp
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'border-border bg-card text-muted-foreground'
+                      }`}
+                    >
+                      <span className="text-xl">🥫</span>
+                      <span>Wet food {stationState.wetFoodToppedUp ? '✓' : ''}</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setWaterToppedUp(stationId, !stationState.waterToppedUp)}
                     className={`h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${

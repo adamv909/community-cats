@@ -20,6 +20,7 @@ export interface StationState {
   foodToppedUp: boolean      // evening round (binary wet food toggle)
   foodLevel: FoodLevel | null // morning round (dry food level)
   waterToppedUp: boolean
+  wetFoodToppedUp?: boolean  // morning round, station-specific (stations.requires_wet_food) — optional for backward compatibility with rounds persisted before this field existed
   notes: string
   seenCatIds: string[]
   additionalCats: AdditionalCat[]  // new cats described by volunteer (no DB record)
@@ -54,6 +55,7 @@ interface FeedingRoundStore {
   setFoodToppedUp: (stationId: string, value: boolean) => void
   setFoodLevel: (stationId: string, level: FoodLevel | null) => void
   setWaterToppedUp: (stationId: string, value: boolean) => void
+  setWetFoodToppedUp: (stationId: string, value: boolean) => void
   setStationNotes: (stationId: string, notes: string) => void
   addAdditionalCat: (stationId: string, cat: Omit<AdditionalCat, 'id'>) => void
   removeAdditionalCat: (stationId: string, index: number) => void
@@ -106,6 +108,7 @@ export const useFeedingRoundStore = create<FeedingRoundStore>()(
                 foodToppedUp: false,
                 foodLevel: null,
                 waterToppedUp: false,
+                wetFoodToppedUp: false,
                 notes: '',
                 seenCatIds: [],
                 additionalCats: [],
@@ -172,6 +175,18 @@ export const useFeedingRoundStore = create<FeedingRoundStore>()(
           activeRound: {
             ...state.activeRound,
             stationStates: { ...state.activeRound.stationStates, [stationId]: { ...station, waterToppedUp: value } },
+          },
+        }
+      }),
+
+      setWetFoodToppedUp: (stationId, value) => set(state => {
+        if (!state.activeRound) return state
+        const station = state.activeRound.stationStates[stationId]
+        if (!station) return state
+        return {
+          activeRound: {
+            ...state.activeRound,
+            stationStates: { ...state.activeRound.stationStates, [stationId]: { ...station, wetFoodToppedUp: value } },
           },
         }
       }),

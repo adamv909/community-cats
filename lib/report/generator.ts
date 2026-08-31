@@ -14,6 +14,8 @@ export interface StationFoodEntry {
   foodLevel: 'empty' | 'medium' | 'full' | null
   foodToppedUp: boolean
   waterToppedUp: boolean
+  requiresWetFood: boolean
+  wetFoodToppedUp: boolean
 }
 
 export interface StationNote {
@@ -87,15 +89,19 @@ export function generateReport(input: ReportInput): string {
     const needsAttention = (s: StationFoodEntry) => s.foodLevel === 'empty' || s.foodLevel === 'medium'
     const foodOutstanding = stationEntries.filter(s => needsAttention(s) && !s.foodToppedUp)
     const waterOutstanding = stationEntries.filter(s => needsAttention(s) && !s.waterToppedUp)
+    const wetFoodOutstanding = stationEntries.filter(s => s.requiresWetFood && !s.wetFoodToppedUp)
 
     if (foodOutstanding.length > 0) {
       lines.push(`⚠️ Dry food not topped up: ${foodOutstanding.map(s => s.name).join(', ')}`)
+    }
+    if (wetFoodOutstanding.length > 0) {
+      lines.push(`⚠️ Wet food not topped up: ${wetFoodOutstanding.map(s => s.name).join(', ')}`)
     }
     if (waterOutstanding.length > 0) {
       lines.push(`⚠️ Water not topped up: ${waterOutstanding.map(s => s.name).join(', ')}`)
     }
 
-    if (foodOutstanding.length === 0 && waterOutstanding.length === 0) {
+    if (foodOutstanding.length === 0 && waterOutstanding.length === 0 && wetFoodOutstanding.length === 0) {
       lines.push('All stations topped up with dry food and water.')
     }
   } else {
