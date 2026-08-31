@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { fetchActiveRoutes, type RouteStation } from '@/lib/supabase/services/routes'
+import { fetchActiveRoutes, fetchAreasForCluster, type RouteStation } from '@/lib/supabase/services/routes'
 import { fetchCatsByStation, fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { usePreferencesStore } from '@/store/preferences-store'
@@ -44,13 +44,12 @@ export default function StationChecklistPage() {
     queryKey: ['cats', stationId],
     queryFn: () => fetchCatsByStation(stationId),
   })
-
   const {
     activeRound, hasHydrated, openStation, toggleCatSeen,
     setFoodToppedUp, setFoodLevel, setWaterToppedUp, setStationNotes,
     addAdditionalCat, removeAdditionalCat, setAdditionalCatWelfare,
     addGuestCat, removeGuestCat,
-    setWelfareConcern, completeStation,
+    setWelfareConcern, toggleAreaCovered, completeStation,
   } = useFeedingRoundStore()
   const { getStationOrder } = usePreferencesStore()
 
@@ -89,7 +88,16 @@ export default function StationChecklistPage() {
 
   // Find station info and route context
   const route = routes?.find(r => r.id === activeRound?.routeId)
-  const foodLabel = route?.round_type === 'morning' ? 'Dry food' : 'Wet food'
+  const isWetFoodRound = route?.round_type === 'evening'
+
+  // Wet Food Round only — the "areas to cover" checklist for this cluster. Areas are
+  // navigation prompts, not cat locations, so this is entirely separate from `cats` above.
+  const { data: areas } = useQuery({
+    queryKey: ['cluster-areas', stationId],
+    queryFn: () => fetchAreasForCluster(stationId),
+    enabled: isWetFoodRound,
+  })
+  const areasCovered = stationState?.areasCovered ?? []
 
   // Respect the volunteer's saved station order (route/[id] "Edit order"), not raw DB order
   const savedOrder = route ? getStationOrder(route.id) : null
@@ -120,6 +128,17 @@ export default function StationChecklistPage() {
       return
     }
     setCompletionError(null)
+    // Wet Food Round has no separate food/water toggle — selecting a cat confirms both
+    // were provided. Set the underlying flags here (still per-cluster, not per-cat) so
+    // station_visits stays accurate: true if any cat was fed at this cluster, false if
+    // the cluster was covered but nothing was seen.
+    if (isWetFoodRound) {
+      const anyCatSeen = stationState!.seenCatIds.length + (stationState!.additionalCats?.length ?? 0) > 0
+      if (anyCatSeen) {
+        setFoodToppedUp(stationId, true)
+        setWaterToppedUp(stationId, true)
+      }
+    }
     completeStation(stationId)
     if (isLastStation) {
       router.push(`/round/${roundId}/complete`)
@@ -192,7 +211,9 @@ export default function StationChecklistPage() {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-muted-foreground font-medium">
-              {stationInfo?.area} · {route?.round_type === 'evening' ? 'Stop' : 'Station'} {currentIndex + 1} of {orderedRouteStations.length}
+              {isWetFoodRound
+                ? `Cluster ${currentIndex + 1} of ${orderedRouteStations.length}`
+                : `${stationInfo?.area} · Station ${currentIndex + 1} of ${orderedRouteStations.length}`}
             </p>
             <h1 className="font-semibold text-base leading-tight mt-0.5 truncate">
               {stationInfo?.name ?? 'Loading…'}
@@ -273,31 +294,38 @@ export default function StationChecklistPage() {
               </div>
             </>
           ) : (
-            <>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Topped up</p>
-              <button
-                onClick={() => setFoodToppedUp(stationId, !stationState.foodToppedUp)}
-                className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                  stationState.foodToppedUp
-                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'border-border bg-card text-muted-foreground'
-                }`}
-              >
-                <span className="text-xl">🍽️</span>
-                <span>{foodLabel} {stationState.foodToppedUp ? '✓' : ''}</span>
-              </button>
-              <button
-                onClick={() => setWaterToppedUp(stationId, !stationState.waterToppedUp)}
-                className={`w-full h-16 rounded-2xl border-2 font-semibold text-sm flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                  stationState.waterToppedUp
-                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'border-border bg-card text-muted-foreground'
-                }`}
-              >
-                <span className="text-xl">💧</span>
-                <span>Water {stationState.waterToppedUp ? '✓' : ''}</span>
-              </button>
-            </>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Areas to cover
+                {areas && areas.length > 0 && (
+                  <span className="ml-2 text-emerald-500 normal-case">
+                    {areasCovered.length}/{areas.length} covered
+                  </span>
+                )}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(areas ?? []).map(area => {
+                  const covered = areasCovered.includes(area.id)
+                  return (
+                    <button
+                      key={area.id}
+                      onClick={() => toggleAreaCovered(stationId, area.id)}
+                      title={area.access_notes ?? undefined}
+                      className={`h-14 rounded-2xl border-2 font-medium text-sm px-3 flex items-center justify-center text-center leading-tight transition-all active:scale-95 ${
+                        covered
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'border-border bg-card text-muted-foreground'
+                      }`}
+                    >
+                      {covered ? '✓ ' : ''}{area.name}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-3 italic">
+                Just a reminder of where to check — walk them in any order.
+              </p>
+            </div>
           )}
         </div>
 
@@ -305,10 +333,19 @@ export default function StationChecklistPage() {
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Cats seen
-            {totalSeen > 0 && (
+            {totalSeen > 0 && isWetFoodRound && (
+              <span className="ml-2 text-emerald-500 normal-case">{totalSeen}/{cats?.length ?? 0} accounted for</span>
+            )}
+            {totalSeen > 0 && !isWetFoodRound && (
               <span className="ml-2 text-emerald-500">{totalSeen} seen</span>
             )}
           </p>
+
+          {isWetFoodRound && (
+            <p className="text-xs text-muted-foreground italic mb-3">
+              Selecting a cat confirms that wet food and water have been provided.
+            </p>
+          )}
 
           {catsLoading ? (
             <div className="grid grid-cols-2 gap-3">
@@ -506,7 +543,7 @@ export default function StationChecklistPage() {
           onClick={handleCompleteStation}
           className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
         >
-          {isLastStation ? 'Complete round →' : `Next ${route?.round_type === 'evening' ? 'stop' : 'station'} →`}
+          {isLastStation ? 'Complete round →' : `Next ${isWetFoodRound ? 'cluster' : 'station'} →`}
         </button>
       </div>
 

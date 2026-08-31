@@ -25,6 +25,7 @@ export interface StationState {
   additionalCats: AdditionalCat[]  // new cats described by volunteer (no DB record)
   guestCatIds: string[]            // registered cats from other stations seen here
   welfare: Record<string, string>  // catId → welfare notes
+  areasCovered: string[]           // Wet Food Round only — area ids checked off within this cluster
 }
 
 export interface ActiveRound {
@@ -60,6 +61,7 @@ interface FeedingRoundStore {
   addGuestCat: (stationId: string, catId: string) => void
   removeGuestCat: (stationId: string, catId: string) => void
   setWelfareConcern: (stationId: string, catId: string, notes: string | null) => void
+  toggleAreaCovered: (stationId: string, areaId: string) => void
   completeStation: (stationId: string) => void
   completeRound: (notes?: string, completedAt?: string) => void
   setSyncStatus: (status: SyncStatus) => void
@@ -109,6 +111,7 @@ export const useFeedingRoundStore = create<FeedingRoundStore>()(
                 additionalCats: [],
                 guestCatIds: [],
                 welfare: {},
+                areasCovered: [],
               },
             },
           },
@@ -283,6 +286,22 @@ export const useFeedingRoundStore = create<FeedingRoundStore>()(
           activeRound: {
             ...state.activeRound,
             stationStates: { ...state.activeRound.stationStates, [stationId]: { ...station, welfare } },
+          },
+        }
+      }),
+
+      toggleAreaCovered: (stationId, areaId) => set(state => {
+        if (!state.activeRound) return state
+        const station = state.activeRound.stationStates[stationId]
+        if (!station) return state
+        const covered = station.areasCovered ?? []
+        const areasCovered = covered.includes(areaId)
+          ? covered.filter(id => id !== areaId)
+          : [...covered, areaId]
+        return {
+          activeRound: {
+            ...state.activeRound,
+            stationStates: { ...state.activeRound.stationStates, [stationId]: { ...station, areasCovered } },
           },
         }
       }),

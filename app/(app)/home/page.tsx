@@ -137,7 +137,7 @@ export default function HomePage() {
       <div className="space-y-3">
         {orderedRoutes.map(route => {
           const stationCount = route.route_stations.length
-          const stopLabel = route.round_type === 'evening' ? 'stop' : 'station'
+          const stopLabel = route.round_type === 'evening' ? 'cluster' : 'station'
           return (
             <button
               key={route.id}

@@ -35,7 +35,7 @@ export function generateReport(input: ReportInput): string {
   const date = new Date(input.startedAt).toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
-  const roundLabel = input.roundType === 'morning' ? 'Morning Round' : 'Evening Round'
+  const roundLabel = input.roundType === 'morning' ? 'Dry Food Round' : 'Wet Food Round'
   const foodType = input.roundType === 'morning' ? 'dry food' : 'wet food'
 
   const fmt = (iso: string) =>

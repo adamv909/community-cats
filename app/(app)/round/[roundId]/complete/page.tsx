@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { syncCompletedRound } from '@/lib/supabase/services/sync'
+import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
 
 type SyncState = 'idle' | 'syncing' | 'done' | 'error'
 
@@ -13,6 +15,8 @@ export default function RoundCompletePage() {
   const { activeRound, hasHydrated, completeRound, setSyncStatus } = useFeedingRoundStore()
   const [notes, setNotes] = useState(activeRound?.notes ?? '')
   const [syncState, setSyncState] = useState<SyncState>('idle')
+  const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
+  const isWetFoodRound = routes?.find(r => r.id === activeRound?.routeId)?.round_type === 'evening'
 
   const roundMissing = hasHydrated && (!activeRound || activeRound.id !== roundId)
 
@@ -83,7 +87,7 @@ export default function RoundCompletePage() {
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 text-center">
           <p className="text-3xl font-bold">{stationStates.length}</p>
-          <p className="text-xs text-muted-foreground mt-1">stations visited</p>
+          <p className="text-xs text-muted-foreground mt-1">{isWetFoodRound ? 'clusters visited' : 'stations visited'}</p>
         </div>
         <div className={`border rounded-2xl p-4 text-center ${allFood ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-card border-border'}`}>
           <p className="text-2xl">🍽️</p>

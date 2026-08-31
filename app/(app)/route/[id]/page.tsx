@@ -30,7 +30,7 @@ interface RouteStation {
 }
 
 function stopWord(roundType: string | undefined, capitalize = false) {
-  const word = roundType === 'evening' ? 'stop' : 'station'
+  const word = roundType === 'evening' ? 'cluster' : 'station'
   return capitalize ? word[0].toUpperCase() + word.slice(1) : word
 }
 

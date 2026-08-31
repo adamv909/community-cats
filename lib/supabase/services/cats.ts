@@ -5,13 +5,14 @@ const CAT_STATION_COLUMNS = 'id, name, photo_url, description, status, health_no
 export async function fetchCatsByStation(stationId: string) {
   const supabase = createClient()
 
-  // A cat's primary_station_id is its morning-round location (or null if it has none).
-  // The evening round uses finer-grained "stops" that don't map 1:1 onto morning
-  // stations, so a cat can also be expected at a stop via cat_known_locations without
-  // that being its primary station — e.g. Maple's primary is "Tornado" (morning) but
-  // she's also known at "Splendor Fields Station" (evening). Both are checked and
-  // merged so neither round misses a cat.
-  const [primaryResult, knownResult] = await Promise.all([
+  // A cat's primary_station_id is its Dry Food Round location (or null if it has none).
+  // The Wet Food Round tracks cats at cluster level via wet_food_cluster_id instead — a
+  // separate column, not derived from primary_station_id, so a cat's dry/wet locations
+  // can freely differ (e.g. Maple's primary is "Tornado" but her wet_food_cluster_id is
+  // "Q Cluster"). cat_known_locations is the older per-stop mechanism, kept for any
+  // historical/legacy station id still referenced elsewhere. All three are checked and
+  // merged so no round misses a cat regardless of which mechanism placed them there.
+  const [primaryResult, knownResult, clusterResult] = await Promise.all([
     supabase
       .from('cats')
       .select(CAT_STATION_COLUMNS)
@@ -28,10 +29,17 @@ export async function fetchCatsByStation(stationId: string) {
       .eq('station_id', stationId)
       .eq('cats.is_active', true)
       .eq('cats.is_provisional', false),
+    supabase
+      .from('cats')
+      .select(CAT_STATION_COLUMNS)
+      .eq('wet_food_cluster_id', stationId)
+      .eq('is_active', true)
+      .eq('is_provisional', false),
   ])
 
   if (primaryResult.error) throw primaryResult.error
   if (knownResult.error) throw knownResult.error
+  if (clusterResult.error) throw clusterResult.error
 
   type CatRow = { id: string; name: string; photo_url: string | null; description: string | null; status: string; health_notes: string | null; sex: string | null; feeding_instructions: string | null; safety_notes: string | null }
   const byId = new Map<string, CatRow>()
@@ -40,6 +48,7 @@ export async function fetchCatsByStation(stationId: string) {
     const cat = (Array.isArray(row.cat) ? row.cat[0] : row.cat) as CatRow
     if (cat) byId.set(cat.id, cat)
   }
+  for (const cat of (clusterResult.data ?? []) as CatRow[]) byId.set(cat.id, cat)
 
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
 }

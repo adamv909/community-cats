@@ -7,7 +7,13 @@ export interface StationInfo {
   latitude: number
   longitude: number
   access_notes: string | null
-  kind: 'station' | 'stop'
+  kind: 'station' | 'stop' | 'cluster'
+}
+
+export interface ClusterArea {
+  id: string
+  name: string
+  access_notes: string | null
 }
 
 export interface RouteStation {
@@ -57,4 +63,19 @@ export async function fetchActiveRoutes(): Promise<ActiveRoute[]> {
         }
       }),
   }))
+}
+
+// Wet Food Round only — the "areas to cover" checklist within a cluster. These are
+// navigation/coverage prompts, not cat locations: a cat's cluster comes from
+// cats.wet_food_cluster_id, never from which area was checked off.
+export async function fetchAreasForCluster(clusterId: string): Promise<ClusterArea[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('stations')
+    .select('id, name, access_notes')
+    .eq('cluster_id', clusterId)
+    .order('name')
+
+  if (error) throw error
+  return data ?? []
 }
