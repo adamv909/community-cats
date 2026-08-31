@@ -148,12 +148,6 @@ export default function StationChecklistPage() {
     }
   }
 
-  function openInMaps() {
-    if (!stationInfo) return
-    const url = `https://maps.google.com/?q=${stationInfo.latitude},${stationInfo.longitude}`
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-
   async function handleAddCat() {
     const name = newCatName.trim()
     if (!name && !newCatPhoto) { setShowAddCat(false); return }
@@ -208,23 +202,15 @@ export default function StationChecklistPage() {
     <div className="max-w-lg mx-auto pb-16">
       {/* Header */}
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 pt-4 pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium">
-              {isWetFoodRound
-                ? `Cluster ${currentIndex + 1} of ${orderedRouteStations.length}`
-                : `${stationInfo?.area} · Station ${currentIndex + 1} of ${orderedRouteStations.length}`}
-            </p>
-            <h1 className="font-semibold text-base leading-tight mt-0.5 truncate">
-              {stationInfo?.name ?? 'Loading…'}
-            </h1>
-          </div>
-          <button
-            onClick={openInMaps}
-            className="flex-shrink-0 flex items-center gap-1 text-xs text-primary border border-primary/30 rounded-lg px-2.5 py-1.5 mt-0.5"
-          >
-            Maps ↗
-          </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-muted-foreground font-medium">
+            {isWetFoodRound
+              ? `Cluster ${currentIndex + 1} of ${orderedRouteStations.length}`
+              : `${stationInfo?.area} · Station ${currentIndex + 1} of ${orderedRouteStations.length}`}
+          </p>
+          <h1 className="font-semibold text-base leading-tight mt-0.5 truncate">
+            {stationInfo?.name ?? 'Loading…'}
+          </h1>
         </div>
 
         {stationInfo?.access_notes && (
