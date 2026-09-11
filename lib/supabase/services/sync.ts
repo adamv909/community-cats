@@ -24,9 +24,14 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
 
   const supabase = createClient()
 
-  // Every write below is `ON CONFLICT DO NOTHING` on a client-generated id — the whole
-  // function is safe to call again after a partial failure (e.g. network drop halfway
-  // through a round with many stations) without creating duplicate rows.
+  // Every write below is keyed on a stable client-generated id, so the whole function is
+  // safe to call again after a partial failure (e.g. network drop halfway through a round
+  // with many stations) without creating duplicate rows. feeding_rounds/sightings/provisional
+  // cats use `ON CONFLICT DO NOTHING` (their fields are fixed at creation). station_visits is
+  // the exception: it's a real upsert (ON CONFLICT DO UPDATE, via RLS's "Volunteer update own
+  // visit" policy), because the volunteer can revisit an already-synced station and change its
+  // data (e.g. via Previous navigation) before a retry — the retry must make the server match
+  // the current local state, not silently keep whatever synced first.
 
   // 1. Feeding round
   const { error: roundErr } = await supabase.from('feeding_rounds').upsert({
@@ -53,7 +58,7 @@ export async function syncCompletedRound(round: ActiveRound): Promise<void> {
       water_topped_up: state.waterToppedUp,
       wet_food_topped_up: state.wetFoodToppedUp ?? false,
       notes: state.notes || null,
-    }, { onConflict: 'id', ignoreDuplicates: true })
+    }, { onConflict: 'id' })
     if (visitErr) throw visitErr
 
     // Registered cats (expected + guest) seen at this station

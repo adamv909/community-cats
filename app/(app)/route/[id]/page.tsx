@@ -23,10 +23,11 @@ import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { usePreferencesStore } from '@/store/preferences-store'
 import { useUser } from '@/hooks/use-user'
+import { reconcileStationOrder } from '@/lib/route-order'
 
 interface RouteStation {
   id: string
-  station: { id: string; name: string; area: string }
+  station: { id: string; name: string; area: string; requires_wet_food: boolean }
 }
 
 function stopWord(roundType: string | undefined, capitalize = false) {
@@ -45,7 +46,7 @@ function SortableStation({
   index: number
   isComplete: boolean
   isEditing: boolean
-  stationState: { completedAt: string | null; foodToppedUp: boolean; waterToppedUp: boolean } | undefined
+  stationState: { completedAt: string | null; foodToppedUp: boolean; waterToppedUp: boolean; wetFoodToppedUp?: boolean } | undefined
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: rs.station.id })
@@ -97,6 +98,7 @@ function SortableStation({
       {!isEditing && isComplete && stationState && (
         <div className="text-xs text-muted-foreground flex gap-2">
           {stationState.foodToppedUp && <span>🍽️</span>}
+          {rs.station.requires_wet_food && stationState.wetFoodToppedUp && <span>🥫</span>}
           {stationState.waterToppedUp && <span>💧</span>}
         </div>
       )}
@@ -130,14 +132,7 @@ export default function RouteOverviewPage() {
     if (!route) return []
     const order = isEditing ? draftOrder : savedOrder
     if (!order) return route.route_stations
-    const map = new Map(route.route_stations.map(rs => [rs.station.id, rs]))
-    const ordered = order.map(sid => map.get(sid)).filter(Boolean) as RouteStation[]
-    // Append any new stations not in saved order
-    const inOrder = new Set(order)
-    route.route_stations.forEach(rs => {
-      if (!inOrder.has(rs.station.id)) ordered.push(rs)
-    })
-    return ordered
+    return reconcileStationOrder(order, route.route_stations)
   }, [route, savedOrder, draftOrder, isEditing])
 
   const sensors = useSensors(

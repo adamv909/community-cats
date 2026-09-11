@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { fetchActiveRoutes, fetchAreasForCluster, type RouteStation } from '@/lib/supabase/services/routes'
+import { fetchActiveRoutes, fetchAreasForCluster } from '@/lib/supabase/services/routes'
+import { reconcileStationOrder } from '@/lib/route-order'
 import { fetchCatsByStation, fetchCatsByIds } from '@/lib/supabase/services/cats'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { usePreferencesStore } from '@/store/preferences-store'
@@ -104,19 +105,21 @@ export default function StationChecklistPage() {
   const orderedRouteStations = useMemo(() => {
     if (!route) return []
     if (!savedOrder) return route.route_stations
-    const map = new Map(route.route_stations.map(rs => [rs.station.id, rs]))
-    const ordered = savedOrder.map(sid => map.get(sid)).filter(Boolean) as RouteStation[]
-    const inOrder = new Set(savedOrder)
-    route.route_stations.forEach(rs => { if (!inOrder.has(rs.station.id)) ordered.push(rs) })
-    return ordered
+    return reconcileStationOrder(savedOrder, route.route_stations)
   }, [route, savedOrder])
 
   const currentIndex = orderedRouteStations.findIndex(rs => rs.station.id === stationId)
+  // currentIndex === -1 means this station isn't part of the current route at all (e.g. the
+  // route changed while this round was in progress). Every derived value below must stay
+  // undefined/false in that case — in particular, orderedRouteStations[currentIndex + 1] at
+  // currentIndex -1 would otherwise resolve to index 0, silently sending "Next" back to the
+  // first station in the route.
+  const stationNotInRoute = currentIndex === -1 && orderedRouteStations.length > 0
   const stationInfo = orderedRouteStations[currentIndex]?.station
-  const prevStation = orderedRouteStations[currentIndex - 1]?.station
-  const nextStation = orderedRouteStations[currentIndex + 1]?.station
+  const prevStation = currentIndex === -1 ? undefined : orderedRouteStations[currentIndex - 1]?.station
+  const nextStation = currentIndex === -1 ? undefined : orderedRouteStations[currentIndex + 1]?.station
   const isFirstStation = currentIndex <= 0
-  const isLastStation = currentIndex === orderedRouteStations.length - 1
+  const isLastStation = currentIndex !== -1 && currentIndex === orderedRouteStations.length - 1
 
   const expectedCatIds = (cats ?? []).map(c => c.id)
   const welfareCat = welfareCatId
@@ -125,6 +128,9 @@ export default function StationChecklistPage() {
   const welfareAdditionalCat = welfareAdditionalCatIndex !== null ? additionalCats[welfareAdditionalCatIndex] : null
 
   function handleCompleteStation() {
+    // Current station isn't part of the route — nothing safe to validate, complete, or
+    // advance to. See stationNotInRoute below, which fails safe in the UI for this case.
+    if (currentIndex === -1) return
     if (route?.round_type === 'morning' && stationState!.foodLevel === null) {
       setCompletionError('Select the dry food level on arrival before continuing.')
       return
@@ -203,6 +209,22 @@ export default function StationChecklistPage() {
     return (
       <div className="p-4 text-center pt-20">
         <p className="text-muted-foreground text-sm">Loading station…</p>
+      </div>
+    )
+  }
+
+  // Route data has loaded and has stations, but this one isn't among them (e.g. the route
+  // changed while this round was in progress). Fail safely rather than guessing a
+  // destination — no auto-navigation, no validation, no completion.
+  if (stationNotInRoute) {
+    return (
+      <div className="p-4 text-center pt-20">
+        <p className="text-muted-foreground">This station isn&apos;t part of the current route anymore.</p>
+        {route && (
+          <button onClick={() => router.push(`/route/${route.id}`)} className="mt-4 text-primary text-sm">
+            Back to route overview
+          </button>
+        )}
       </div>
     )
   }
