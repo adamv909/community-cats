@@ -31,6 +31,7 @@ export interface ReportInput {
   startedAt: string
   completedAt: string | null
   stationEntries: StationFoodEntry[]
+  catsNotSeen: string[]
 }
 
 export function generateReport(input: ReportInput): string {
@@ -67,6 +68,14 @@ export function generateReport(input: ReportInput): string {
     lines.push(area.area)
     for (const cat of area.cats) {
       lines.push(cat.name)
+    }
+    lines.push('')
+  }
+
+  if (input.catsNotSeen.length > 0) {
+    lines.push('Cats Not Seen')
+    for (const name of input.catsNotSeen) {
+      lines.push(name)
     }
     lines.push('')
   }

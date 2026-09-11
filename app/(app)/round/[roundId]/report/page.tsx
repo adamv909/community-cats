@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useFeedingRoundStore } from '@/store/feeding-round-store'
 import { fetchActiveRoutes } from '@/lib/supabase/services/routes'
-import { fetchCatsByIds } from '@/lib/supabase/services/cats'
+import { fetchCatsByIds, fetchCatsByStations } from '@/lib/supabase/services/cats'
 import { generateReport } from '@/lib/report/generator'
 import { syncCompletedRound } from '@/lib/supabase/services/sync'
 import { getPhotos, deletePhotos } from '@/lib/db/photo-store'
@@ -54,6 +54,8 @@ export default function ReportPage() {
   const [retrying, setRetrying] = useState(false)
 
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: fetchActiveRoutes })
+  const route = routes?.find(r => r.id === activeRound?.routeId)
+  const routeStationIds = route?.route_stations.map(rs => rs.station.id) ?? []
 
   const allSeenCatIds = activeRound
     ? [...new Set(Object.values(activeRound.stationStates).flatMap(s => s.seenCatIds))]
@@ -63,6 +65,14 @@ export default function ReportPage() {
     queryKey: ['seen-cats', allSeenCatIds],
     queryFn: () => fetchCatsByIds(allSeenCatIds),
     enabled: allSeenCatIds.length > 0,
+  })
+
+  // Every cat expected somewhere on this round's route, regardless of whether they were
+  // seen — the "Cats Not Seen" section is expectedCats minus allSeenCatIds.
+  const { data: expectedCats } = useQuery({
+    queryKey: ['expected-cats', routeStationIds],
+    queryFn: () => fetchCatsByStations(routeStationIds),
+    enabled: routeStationIds.length > 0,
   })
 
   // additionalCats normally carry a photoKey (IndexedDB reference) — resolve to data URLs
@@ -96,11 +106,14 @@ export default function ReportPage() {
     .filter((p): p is NewCatPhoto => p !== null)
 
   useEffect(() => {
-    if (!activeRound || !routes) return
+    if (!activeRound || !routes || !route) return
     if (allSeenCatIds.length > 0 && !seenCats) return
+    if (routeStationIds.length > 0 && !expectedCats) return
 
-    const route = routes.find(r => r.id === activeRound.routeId)
-    if (!route) return
+    const catsNotSeen = (expectedCats ?? [])
+      .filter(c => !allSeenCatIds.includes(c.id))
+      .map(c => c.name)
+      .sort((a, b) => a.localeCompare(b))
 
     const areaMap = new Map<string, { name: string; hasWelfareConcern: boolean; welfareNotes: string }[]>()
 
@@ -149,10 +162,12 @@ export default function ReportPage() {
       startedAt: activeRound.startedAt,
       completedAt: activeRound.completedAt,
       stationEntries,
+      catsNotSeen,
     })
 
     setReportText(text)
-  }, [activeRound, routes, seenCats])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRound, routes, route, seenCats, expectedCats])
 
   const roundMissing = hasHydrated && (!activeRound || activeRound.id !== roundId)
 
