@@ -113,7 +113,9 @@ export default function StationChecklistPage() {
 
   const currentIndex = orderedRouteStations.findIndex(rs => rs.station.id === stationId)
   const stationInfo = orderedRouteStations[currentIndex]?.station
+  const prevStation = orderedRouteStations[currentIndex - 1]?.station
   const nextStation = orderedRouteStations[currentIndex + 1]?.station
+  const isFirstStation = currentIndex <= 0
   const isLastStation = currentIndex === orderedRouteStations.length - 1
 
   const expectedCatIds = (cats ?? []).map(c => c.id)
@@ -146,6 +148,15 @@ export default function StationChecklistPage() {
       openStation(nextStation.id)
       router.push(`/round/${roundId}/station/${nextStation.id}`)
     }
+  }
+
+  // Pure navigation — does not validate, complete, or otherwise touch feeding-round state.
+  // openStation() is already a no-op for a station that's been visited before, so revisiting
+  // preserves exactly what was there.
+  function handlePrevious() {
+    if (!prevStation) return
+    openStation(prevStation.id)
+    router.push(`/round/${roundId}/station/${prevStation.id}`)
   }
 
   async function handleAddCat() {
@@ -534,16 +545,27 @@ export default function StationChecklistPage() {
           />
         </div>
 
-        {/* Complete */}
+        {/* Navigate / Complete */}
         {completionError && (
           <p ref={completionErrorRef} className="text-sm text-destructive text-center">{completionError}</p>
         )}
-        <button
-          onClick={handleCompleteStation}
-          className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
-        >
-          {isLastStation ? 'Complete round →' : `Next ${isWetFoodRound ? 'cluster' : 'station'} →`}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handlePrevious}
+            disabled={isFirstStation}
+            aria-label="Previous"
+            className="flex-shrink-0 w-28 h-14 rounded-2xl border border-border bg-card text-muted-foreground font-medium text-sm flex flex-col items-center justify-center gap-0.5 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:pointer-events-none"
+          >
+            <span>← Previous</span>
+            {prevStation && <span className="text-[11px] truncate max-w-full px-1">{prevStation.name}</span>}
+          </button>
+          <button
+            onClick={handleCompleteStation}
+            className="flex-1 h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base active:scale-[0.98] transition-transform"
+          >
+            {isLastStation ? 'Complete round →' : `Next ${isWetFoodRound ? 'cluster' : 'station'} →`}
+          </button>
+        </div>
       </div>
 
       {/* Welfare modal — registered / guest cats */}
